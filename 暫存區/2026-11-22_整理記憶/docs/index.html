@@ -150,7 +150,7 @@
             <section class="observer-section"><div class="observer-title"><h3>他現在</h3><span id="observer-now-time" class="observer-note"></span></div><div id="observer-now" class="observer-now"></div></section>
             <section class="observer-section"><div class="observer-title"><h3>他記得的近期經過</h3><span class="observer-note">AI 每句順便更新，最多 500 字</span></div><p id="observer-summary" class="observer-summary"></p></section>
             <section class="observer-section"><div class="observer-title"><h3>內心時間線</h3><span class="observer-note">最近 30 句，新的在上面</span></div><div id="observer-inner" class="observer-inner"></div></section>
-            <section class="observer-section"><div class="observer-title"><h3>已確認記憶</h3><span id="observer-memory-count" class="badge">0</span></div><div id="observer-memories" class="observer-memories"></div></section>
+            <section class="observer-section"><div class="observer-title"><h3>已確認記憶</h3><span id="observer-memory-count" class="badge">0</span><button id="memory-cleanup" class="secondary small-button" type="button">請 AI 整理記憶</button></div><div id="observer-memories" class="observer-memories"></div></section>
             <details class="advanced observer-numbers"><summary>數字（心理數值、關係），平常不用看</summary>
               <section class="observer-section"><h3>目前心理狀態</h3><div id="observer-state" class="observer-metrics"></div></section>
               <section class="observer-section"><h3>關係資料</h3><p id="observer-relationships" class="observer-empty"></p><div id="observer-relationship-list" class="observer-relationships"></div></section>
@@ -168,6 +168,15 @@
       <div class="dialog-actions"><button id="card-copy" type="button" class="secondary">再複製一次</button><button id="card-download" type="button" class="secondary">下載成檔案</button></div>
       <textarea id="card-paste" rows="5" placeholder="把填好的角卡整份貼在這裡" aria-label="貼上填好的角卡"></textarea>
       <div class="dialog-actions"><button value="cancel" class="text-button">關閉</button><button id="card-import" type="button" class="primary">匯入成新角色</button></div>
+    </form></dialog>
+    <dialog id="memory-dialog" class="choice-dialog card-dialog"><form method="dialog">
+      <h2>整理記憶</h2>
+      <p>請 AI 把意思一樣或很像的記憶合併。整理完會先給你看，按「換成整理後的記憶」才會真的換。</p>
+      <div class="dialog-actions"><button id="mc-copy" type="button" class="secondary">複製提示詞</button><button id="mc-gemini" type="button" class="primary">用 Gemini 整理</button></div>
+      <textarea id="mc-paste" rows="4" placeholder="手動：把提示詞貼給網頁上的 AI，再把它回的整段貼在這裡" aria-label="貼上 AI 整理的結果"></textarea>
+      <div class="dialog-actions"><button id="mc-read" type="button" class="secondary">讀取貼上的內容</button></div>
+      <div id="mc-preview" class="mc-preview"></div>
+      <div class="dialog-actions"><button value="cancel" class="text-button">關閉</button><button id="mc-apply" type="button" class="primary" hidden>換成整理後的記憶</button></div>
     </form></dialog>
     <dialog id="hue-dialog" class="choice-dialog"><form method="dialog">
       <h2>主題色</h2>

@@ -247,6 +247,38 @@ function importCardFromDialog() {
   catch (error) { toast(error.message, true); }
 }
 
+// ---------- 整理記憶：請 AI 合併類似的記憶，先看前後對照，按確定才換 ----------
+let cleanupResult = null;
+const IMPORTANCE_LABEL = { core: "核心", important: "重要", ordinary: "普通" };
+function openMemoryCleanup() {
+  if (!current?.memories?.length) { toast("還沒有記憶可以整理。", true); return; }
+  cleanupResult = null; $("#mc-paste").value = ""; $("#mc-preview").innerHTML = ""; $("#mc-apply").hidden = true;
+  $("#mc-gemini").disabled = !geminiSettings().apiKey; $("#mc-gemini").title = geminiSettings().apiKey ? "" : "還沒在「設定」填 Gemini 鑰匙";
+  $("#memory-dialog").showModal();
+  if (autoCopyOn()) copyText(Core.buildMemoryCleanupPrompt(current), "整理記憶的提示詞已經複製好了，貼給網頁上的 AI", "瀏覽器不讓網頁直接複製，請按「複製提示詞」。");
+}
+function showCleanup(text) {
+  try {
+    cleanupResult = Core.validateMemoryCleanup(current, Core.parseJsonObjectText(text));
+    const box = $("#mc-preview"); box.innerHTML = "";
+    box.append(el("p", "", `整理前 ${current.memories.length} 條 → 整理後 ${cleanupResult.length} 條：`));
+    cleanupResult.forEach((item) => box.append(el("p", "", `［${IMPORTANCE_LABEL[item.importance]}］${item.summary}（${item.reason}）`)));
+    $("#mc-apply").hidden = false;
+  } catch (error) { cleanupResult = null; $("#mc-apply").hidden = true; toast(`整理結果沒通過檢查：${error.message}`, true); }
+}
+async function cleanupWithGemini() {
+  const button = $("#mc-gemini"); button.disabled = true; button.textContent = "Gemini 整理中……";
+  try { showCleanup(await AI.askGeminiWithRetry(Core.buildMemoryCleanupPrompt(current), geminiSettings())); }
+  catch (error) { toast(`${error.message}\n可以改用「複製提示詞」手動整理。`, true); }
+  finally { button.disabled = false; button.textContent = "用 Gemini 整理"; }
+}
+function applyCleanup() {
+  if (!cleanupResult) return;
+  if (!confirm(`換成整理後的記憶？\n\n・整理前 ${current.memories.length} 條，整理後 ${cleanupResult.length} 條。\n・舊的記憶會被換掉，找不回來。\n・之後用「從這句重來」退到整理前的句子，記憶會一起退回當時的樣子。\n\n確定要換嗎？`)) return;
+  const list = cleanupResult;
+  if (persist((doc) => Core.applyMemoryCleanup(doc, list), `記憶整理好了，現在 ${list.length} 條`)) { cleanupResult = null; $("#memory-dialog").close(); }
+}
+
 // ---------- 設定（Gemini 鑰匙只存在這台裝置） ----------
 function openSettings() { const s = Store.getSettings(), form = $("#settings-form"); form.gemini_api_key.value = s.gemini_api_key || ""; form.gemini_model.value = s.gemini_model || ""; form.phone_zoom.value = s.phone_zoom === "page" ? "page" : "fullscreen"; form.auto_copy.checked = s.auto_copy !== false; $("#settings-dialog").showModal(); }
 function saveSettings(event) {
@@ -737,6 +769,8 @@ function start() {
   try { applyTheme(); } catch { /* 存不了設定也照樣能玩 */ }
   setupHueRing(); $("#chat-narrower").onclick = () => changeChatWidth(-1); $("#chat-wider").onclick = () => changeChatWidth(1);
   $("#card-open").onclick = openCardDialog; $("#card-copy").onclick = () => copyText($("#card-template").value, "空白角卡已經複製好了", "瀏覽器不讓網頁直接複製，請在上面的框裡全選後複製，或按「下載成檔案」。");
+  $("#memory-cleanup").onclick = openMemoryCleanup; $("#mc-copy").onclick = () => copyText(Core.buildMemoryCleanupPrompt(current), "整理記憶的提示詞已複製", "瀏覽器不讓網頁直接複製。");
+  $("#mc-gemini").onclick = cleanupWithGemini; $("#mc-read").onclick = () => showCleanup($("#mc-paste").value); $("#mc-apply").onclick = applyCleanup;
   $("#card-download").onclick = downloadCard; $("#card-import").onclick = importCardFromDialog;
   try { refreshList(); if (characters[0]) { loadCharacter(characters[0].id); showTab("chat"); } }
   catch (error) { toast(error.message, true); }
