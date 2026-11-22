@@ -501,6 +501,68 @@
     return view;
   }
 
+  // ---------- 角卡（純文字的角色格式，可以在別的軟體慢慢填再匯入） ----------
+  const CARD_TITLE = "EmoCara 角卡";
+  const CARD_FIELDS = [
+    ["name", "名字"], ["aliases", "別名（用逗號分隔）"], ["age", "年齡"], ["gender", "性別"], ["pronouns", "代名詞"],
+    ["occupation", "職業／身分"], ["appearance", "外表"], ["background", "背景與人生經歷"], ["current_situation", "目前生活狀態"],
+  ];
+  // 讀的時候也認得簡短的寫法。
+  const CARD_LABELS = new Map([...CARD_FIELDS.map(([key, label]) => [label, key]), ["別名", "aliases"], ["職業", "occupation"], ["身分", "occupation"], ["背景", "background"], ["外表與樣貌", "appearance"]]);
+  function cardTemplate() {
+    const lines = [
+      `${CARD_TITLE}`,
+      "填好之後，回 EmoCara 按左邊的「角卡」貼上，或按「匯入角色」選這個檔案。",
+      "空著的格子會直接跳過，不用填滿。括號裡的問題只是提示，留著或刪掉都可以。",
+      "內容可以換行寫好幾行，寫到下一個標題之前都算同一格。",
+      "想加自己的模組，就多寫一段【模組名稱】，底下寫內容。",
+      "",
+    ];
+    for (const [key, label] of CARD_FIELDS) lines.push(["appearance", "background", "current_situation"].includes(key) ? `${label}：\n` : `${label}：`);
+    lines.push("");
+    for (const [type, name] of Object.entries(PRESET_MODULES)) {
+      if (type === "custom") continue;
+      lines.push(`【${name}】`, `（${MODULE_GUIDES[type]}）`, "");
+    }
+    return lines.join("\n").replace(/\n{3,}/g, "\n\n");
+  }
+  const GUIDE_LINES = new Set(Object.values(MODULE_GUIDES).map((guide) => `（${guide}）`));
+  function parseCard(text) {
+    if (typeof text !== "string" || !text.trim()) throw new Error("角卡是空的。");
+    const fields = {}, modules = []; let target = null, found = false;
+    const push = (line) => { if (!target) return; target.lines.push(line); };
+    for (const raw of text.replace(/\r\n?/g, "\n").split("\n")) {
+      const line = raw.replace(/\s+$/, "");
+      const heading = line.trim().match(/^【(.+)】$/);
+      if (heading) { target = { kind: "module", name: heading[1].trim(), lines: [] }; modules.push(target); found = true; continue; }
+      const field = line.match(/^\s*([^：:【】]{1,20}?)\s*[：:]\s*(.*)$/);
+      if (field && CARD_LABELS.has(field[1].trim())) {
+        const key = CARD_LABELS.get(field[1].trim());
+        target = { kind: "field", key, lines: field[2] ? [field[2]] : [] }; fields[key] = target; found = true; continue;
+      }
+      if (GUIDE_LINES.has(line.trim())) continue; // 模組的提示問題
+      push(line);
+    }
+    if (!found) throw new Error("看不出這是角卡：至少要有「名字：」或【模組名稱】這樣的標題。");
+    const textOf = (item) => item.lines.join("\n").trim();
+    const character = newCharacter(fields.name ? textOf(fields.name).split("\n")[0] : "");
+    for (const [key, item] of Object.entries(fields)) {
+      if (key === "name") continue;
+      const value = textOf(item);
+      if (key === "aliases") character.profile.aliases = value.split(/[,，、\n]/).map((x) => x.trim()).filter(Boolean);
+      else if (["age", "gender", "pronouns"].includes(key)) character.profile[key] = value || null;
+      else character.profile[key] = value;
+    }
+    for (const item of modules) {
+      const value = textOf(item); if (!value) continue;
+      const type = presetTypeByName(item.name);
+      const module = newModule(type || "custom", item.name); module.text = value;
+      character.modules.push(module);
+    }
+    character.metadata.import_source = "card";
+    return normalize(character);
+  }
+
   // ---------- 聊天視窗 ----------
   const FIRST_CHAT_ID = "chat_first";
   const REWIND_LIMIT = 30; // 最近幾句可以「從這句重來」
@@ -700,6 +762,7 @@ ${supplied}`;
     validateUserMessage, validateMemoryCandidates, validateMemoryCapacity, validateChatResponse, applyChatResponse,
     validateRelationship, characterForPrompt, buildChatPrompt, parseJsonObjectText, memoryKey,
     MAX_PROFILE_PROPOSALS, PROPOSAL_FIELDS, PROPOSAL_REMINDER, validateProfileProposals, addProposals, activeProposals, resolveProposal, newTurnId,
+    cardTemplate, parseCard,
     MAX_SCENE_LENGTH, MAX_FEELING_LENGTH, latestFeeling, MAX_SUMMARY_LENGTH, chatSummary, summaryForPrompt, fittingMemories,
     FIRST_CHAT_ID, REWIND_LIMIT, currentChatId, turnChatId, turnsInChat, startNewChat, freshCopy,
     snapshotOf, trimSnapshots, rewindKind, rewind, describeTime, withoutTimes, turnsForPrompt,

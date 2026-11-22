@@ -57,6 +57,9 @@ body.chat-zoomed #panel-chat > .chat-history { background:var(--cf7faf9); }
 .chat-width { display:flex; align-items:center; gap:6px; font-size:.78rem; color:var(--muted); }
 .chat-width input { width:110px; accent-color:var(--accent); }
 @media (max-width:780px) { .chat-width { display:none !important; } }
+/* 角卡 */
+.card-dialog { width:min(560px,calc(100vw - 30px)); }
+.card-dialog textarea { width:100%; border:1px solid var(--cccd9d6); border-radius:8px; padding:9px 10px; background:var(--cfff); color:var(--ink); resize:vertical; line-height:1.55; }
 /* 色相環 */
 dialog { background:var(--paper); color:var(--ink); }
 .hue-dot { display:inline-block; width:.8em; height:.8em; margin-right:7px; border-radius:50%; background:var(--accent); vertical-align:-1px; }

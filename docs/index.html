@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>情緒模擬器｜角色檔案</title>
-    <link rel="stylesheet" href="styles.css?v=0.1.19" />
+    <link rel="stylesheet" href="styles.css?v=0.1.20" />
     <script>
       // 先套上深淺色，免得打開時先閃一下白色。預設深色。
       try { const s = JSON.parse(localStorage.getItem("emocara:settings") || "{}"); document.documentElement.dataset.theme = s.theme === "light" ? "light" : "dark"; }
@@ -14,9 +14,10 @@
   <body>
     <div class="app-shell">
       <aside class="sidebar">
-        <div class="brand"><span class="spark">✦</span><div><strong>情緒模擬器</strong><small>角色檔案 v0.1.19</small></div></div>
+        <div class="brand"><span class="spark">✦</span><div><strong>情緒模擬器</strong><small>角色檔案 v0.1.20</small></div></div>
         <button id="new-character" class="primary wide">＋ 新增角色</button>
-        <label class="import-button wide">⇧ 匯入角色<input id="import-file" type="file" accept="application/json,.json" /></label>
+        <label class="import-button wide">⇧ 匯入角色<input id="import-file" type="file" accept="application/json,.json,text/plain,.txt" /></label>
+        <button id="card-open" class="secondary wide settings-button" type="button">▤ 角卡</button>
         <nav><p class="nav-label">我的角色</p><div id="character-list" class="character-list"></div></nav>
         <button id="theme-toggle" class="secondary wide settings-button" type="button">☀ 換成淺色</button>
         <button id="hue-open" class="secondary wide settings-button" type="button"><span class="hue-dot"></span>主題色</button>
@@ -145,6 +146,14 @@
       </main>
     </div>
     <div id="toast" class="toast" role="status"></div>
+    <dialog id="card-dialog" class="choice-dialog card-dialog"><form method="dialog">
+      <h2>角卡</h2>
+      <p>空白的角卡格式已經複製好了，拿去別的地方慢慢填。填好再貼回下面，或按左邊「匯入角色」選檔案。匯入一律變成一個新角色。</p>
+      <textarea id="card-template" class="code-input" rows="7" readonly aria-label="空白角卡格式"></textarea>
+      <div class="dialog-actions"><button id="card-copy" type="button" class="secondary">再複製一次</button><button id="card-download" type="button" class="secondary">下載成檔案</button></div>
+      <textarea id="card-paste" rows="5" placeholder="把填好的角卡整份貼在這裡" aria-label="貼上填好的角卡"></textarea>
+      <div class="dialog-actions"><button value="cancel" class="text-button">關閉</button><button id="card-import" type="button" class="primary">匯入成新角色</button></div>
+    </form></dialog>
     <dialog id="hue-dialog" class="choice-dialog"><form method="dialog">
       <h2>主題色</h2>
       <p>在色環上點一下或拖著轉，換整個網頁的主色。深淺和鮮豔度固定。</p>
@@ -171,9 +180,9 @@
       <label class="field">Gemini 模型名稱<input name="gemini_model" placeholder="gemini-3.8-flash" /></label>
       <p class="muted">只用手動模式的話，這裡可以不填。</p>
       <div class="dialog-actions"><button value="cancel" class="secondary">取消</button><button value="default" class="primary">儲存</button></div></form></dialog>
-    <script src="core.js?v=0.1.19"></script>
-    <script src="store.js?v=0.1.19"></script>
-    <script src="ai.js?v=0.1.19"></script>
-    <script src="app.js?v=0.1.19"></script>
+    <script src="core.js?v=0.1.20"></script>
+    <script src="store.js?v=0.1.20"></script>
+    <script src="ai.js?v=0.1.20"></script>
+    <script src="app.js?v=0.1.20"></script>
   </body>
 </html>

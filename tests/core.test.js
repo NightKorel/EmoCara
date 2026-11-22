@@ -431,3 +431,36 @@ test("對你的感覺：送給 AI 的是最近那份，跨聊天視窗也算", (
   const prompt = buildChatPrompt(normalize(newCharacter("羅爾")), [], "嗨", { feeling: "有點防備" });
   assert.match(prompt, /"feeling_toward_user":"有點防備"/); assert.match(prompt, /"mood_now"/);
 });
+
+// ---------- 角卡 ----------
+test("角卡：空白格式直接匯入，會是一個空白的新角色", () => {
+  const character = Core.parseCard(Core.cardTemplate());
+  assert.equal(character.profile.name, "未命名角色");
+  assert.equal(character.modules.length, 0);
+  assert.equal(character.profile.appearance, "");
+});
+
+test("角卡：填好的內容會放進對的格子；多行、半形冒號、提示問題、自訂模組都認得", () => {
+  const card = Core.cardTemplate()
+    .replace("名字：", "名字：羅爾")
+    .replace("別名（用逗號分隔）：", "別名（用逗號分隔）：小羅，阿爾")
+    .replace("年齡：", "年齡: 24")
+    .replace("外表：\n", "外表：\n黑色短髮\n左耳有耳洞\n")
+    .replace("（他平常是個什麼樣的人？）", "（他平常是個什麼樣的人？）\n安靜，口頭禪：還好吧")
+    + "\n【喜歡的東西】\n貓、雨天\n";
+  const character = Core.parseCard(card);
+  assert.equal(character.profile.name, "羅爾");
+  assert.deepEqual(character.profile.aliases, ["小羅", "阿爾"]);
+  assert.equal(character.profile.age, "24");
+  assert.equal(character.profile.appearance, "黑色短髮\n左耳有耳洞");
+  const personality = character.modules.find((module) => module.name === "人格特質");
+  assert.equal(personality.type, "personality"); assert.equal(personality.text, "安靜，口頭禪：還好吧");
+  const custom = character.modules.find((module) => module.name === "喜歡的東西");
+  assert.equal(custom.type, "custom"); assert.equal(custom.text, "貓、雨天");
+  assert.equal(character.modules.length, 2);
+});
+
+test("角卡：看不出是角卡的文字會被擋", () => {
+  assert.throws(() => Core.parseCard("今天天氣很好"), /看不出這是角卡/);
+  assert.throws(() => Core.parseCard("   "), /空的/);
+});

@@ -200,7 +200,10 @@ function exportCurrent() {
 async function importFile(event) {
   const file = event.target.files[0]; if (!file) return;
   try {
-    const data = JSON.parse(await file.text());
+    const text = await file.text();
+    // 不是 { 開頭的就當作角卡（純文字）。
+    if (!text.trim().startsWith("{")) { importCardText(text); return; }
+    const data = JSON.parse(text);
     if (!data || typeof data !== "object" || Array.isArray(data)) throw new Error("檔案內容不是角色資料。");
     const turns = Array.isArray(data.chat_turns) ? data.chat_turns : null; delete data.chat_turns;
     let imported = Core.normalize(data);
@@ -218,6 +221,30 @@ async function importFile(event) {
     setDirty(false); refreshList(); loadCharacter(imported.character_id); toast("角色已匯入");
   } catch (error) { toast(error instanceof SyntaxError ? "檔案不是有效的 JSON。" : error.message, true); }
   finally { event.target.value = ""; }
+}
+
+// ---------- 角卡：空白格式（複製、下載），填好的貼回來或用檔案匯入，一律變新角色 ----------
+function openCardDialog() {
+  const template = Core.cardTemplate(); $("#card-template").value = template; $("#card-paste").value = "";
+  $("#card-dialog").showModal();
+  copyText(template, "空白角卡已經複製好了", "瀏覽器不讓網頁直接複製，請在上面的框裡全選後複製，或按「下載成檔案」。");
+}
+function downloadCard() {
+  const blob = new Blob([Core.cardTemplate()], { type: "text/plain;charset=utf-8" });
+  const url = URL.createObjectURL(blob), link = document.createElement("a");
+  link.href = url; link.download = "EmoCara角卡.txt"; document.body.append(link); link.click(); link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+function importCardText(text) {
+  if (characterDirty && !confirm("角色頁有還沒儲存的修改，確定要離開嗎？")) return false;
+  const created = Store.saveCharacter(Core.parseCard(text)); Store.replaceTurns(created.character_id, []);
+  setDirty(false); refreshList(); loadCharacter(created.character_id); showTab("character");
+  toast(`「${created.profile.name}」匯入好了，是一個新角色`);
+  return true;
+}
+function importCardFromDialog() {
+  try { if (importCardText($("#card-paste").value)) $("#card-dialog").close(); }
+  catch (error) { toast(error.message, true); }
 }
 
 // ---------- 設定（Gemini 鑰匙只存在這台裝置） ----------
@@ -527,9 +554,9 @@ function parseManualChatResponse() {
     saveReply(pendingMessage, response);
   } catch (error) { toast(error.message, true); }
 }
-async function copyText(text, message) {
+async function copyText(text, message, failMessage = "瀏覽器不讓網頁直接複製，請按「看提示詞內容」手動全選後複製。") {
   try { await navigator.clipboard.writeText(text); toast(message); }
-  catch { toast("瀏覽器不讓網頁直接複製，請按「看提示詞內容」手動全選後複製。", true); }
+  catch { toast(failMessage, true); }
 }
 function copyChatPrompt() { const prompt = $("#manual-chat-prompt").value; if (!prompt) { toast("請先送出一句話。", true); return; } copyText(prompt, "提示詞已複製"); }
 function toggleChatPrompt() { const box = $("#manual-chat-prompt"); box.hidden = !box.hidden; $("#show-chat-prompt").textContent = box.hidden ? "看提示詞內容" : "收起提示詞"; }
@@ -678,6 +705,8 @@ function showTab(name) { if (name !== "chat") setChatZoom(false); document.query
 function start() {
   try { applyTheme(); } catch { /* 存不了設定也照樣能玩 */ }
   setupHueRing(); $("#chat-width").oninput = changeChatWidth;
+  $("#card-open").onclick = openCardDialog; $("#card-copy").onclick = () => copyText($("#card-template").value, "空白角卡已經複製好了", "瀏覽器不讓網頁直接複製，請在上面的框裡全選後複製，或按「下載成檔案」。");
+  $("#card-download").onclick = downloadCard; $("#card-import").onclick = importCardFromDialog;
   try { refreshList(); if (characters[0]) { loadCharacter(characters[0].id); showTab("chat"); } }
   catch (error) { toast(error.message, true); }
 }
