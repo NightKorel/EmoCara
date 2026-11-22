@@ -232,6 +232,10 @@ function saveSettings(event) {
 // ---------- 觀察者 ----------
 function renderObserver() {
   if (!current) return;
+  const allTurns = Store.allTurns(current.character_id), summary = Core.chatSummary(allTurns, viewedChatId());
+  const carried = !summary && !viewingOldChat() ? Core.summaryForPrompt(current, allTurns) : null;
+  $("#observer-summary").textContent = summary || (carried ? `（這段聊天還沒有自己的摘要，他帶著上一段聊天結束時記得的經過）\n${carried.text}` : "還沒有摘要。聊幾句之後，AI 會開始寫他記得的最近經過。");
+  $("#observer-summary").classList.toggle("observer-empty", !summary);
   const timeline = $("#observer-inner"); timeline.innerHTML = "";
   if (!chatTurns.length) timeline.append(el("p", "observer-empty", "還沒有對話。"));
   [...chatTurns].reverse().forEach((turn) => {
@@ -355,7 +359,10 @@ function renderChat() {
   $("#model-status").classList.toggle("ready", manual || ready);
   $("#chat-generate").disabled = waitingReply;
 }
-function chatPrompt(userMessage) { return Core.buildChatPrompt(current, Core.turnsInChat(Store.allTurns(current.character_id), Core.currentChatId(current)).slice(-12), userMessage); }
+function chatPrompt(userMessage) {
+  const all = Store.allTurns(current.character_id);
+  return Core.buildChatPrompt(current, Core.turnsInChat(all, Core.currentChatId(current)).slice(-12), userMessage, { summary: Core.summaryForPrompt(current, all) });
+}
 function renderChatSelect() {
   const select = $("#chat-select"), chats = current.chats || [];
   select.hidden = chats.length < 2; select.innerHTML = "";
@@ -509,7 +516,9 @@ function applyPendingChat() {
     const userMessage = Core.validateUserMessage(pendingChat.userMessage);
     const { updated, response, selected } = Core.applyChatResponse(current, pendingChat.response, selectedMemoryCandidates());
     const chatId = Core.currentChatId(current), before = Core.snapshotOf(current);
-    current = Store.saveTurn(updated, { contract_version: Core.CHAT_CONTRACT_VERSION, chat_id: chatId, user_message: userMessage, character_reply: response.reply, inner_thought: response.inner_thought, state_proposal: response.state_proposal, memory_candidates: selected, before });
+    // AI 這次沒寫摘要的話，沿用這段聊天上一份。
+    const recentSummary = response.recent_summary || Core.chatSummary(Store.allTurns(current.character_id), chatId) || undefined;
+    current = Store.saveTurn(updated, { contract_version: Core.CHAT_CONTRACT_VERSION, chat_id: chatId, user_message: userMessage, character_reply: response.reply, inner_thought: response.inner_thought, recent_summary: recentSummary, state_proposal: response.state_proposal, memory_candidates: selected, before });
     Store.replaceTurns(current.character_id, Core.trimSnapshots(Store.allTurns(current.character_id), chatId));
     resetPendingChat(); $("#manual-chat-prompt").value = ""; $("#manual-chat-response").value = "";
     refreshChatTurns(); refreshList(); render(); $("#chat-message").focus();
@@ -526,7 +535,7 @@ function composerKeydown(event) {
 // ---------- 分頁與啟動 ----------
 function showTab(name) { document.querySelectorAll(".tab").forEach((x) => x.classList.toggle("active", x.dataset.tab === name)); document.querySelectorAll(".tab-panel").forEach((x) => { x.hidden = x.id !== `panel-${name}`; }); if (name === "chat") { const history = $("#chat-history"); history.scrollTop = history.scrollHeight; } }
 function start() {
-  try { refreshList(); if (characters[0]) loadCharacter(characters[0].id); }
+  try { refreshList(); if (characters[0]) { loadCharacter(characters[0].id); showTab("chat"); } }
   catch (error) { toast(error.message, true); }
 }
 $("#new-character").onclick = createCharacter; document.querySelector("[data-new]").onclick = createCharacter;

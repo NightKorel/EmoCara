@@ -106,3 +106,5 @@ dialog { border:0; padding:0; border-radius:13px; box-shadow:0 18px 60px rgba(20
 .choice-dialog .choice { display:grid; gap:4px; text-align:left; padding:12px 14px; }
 .choice-dialog .choice small { font-weight:400; opacity:.85; line-height:1.5; font-size:.8rem; }
 @media (max-width:780px) { .chat-tools { padding:8px 15px; } }
+/* 近期摘要（2026-11-22 v0.1.9） */
+.observer-summary { margin:10px 0 0; padding:12px 14px; border-radius:9px; background:#f8f9fc; border-left:3px solid #b9c4d6; line-height:1.7; white-space:pre-wrap; font-size:.9rem; }

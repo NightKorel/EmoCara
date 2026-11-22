@@ -9,6 +9,7 @@
   const MAX_MESSAGE_LENGTH = 4000;
   const MAX_REPLY_LENGTH = 6000;
   const MAX_INNER_LENGTH = 2000; // 心裡沒說出口的話，最多幾個字
+  const MAX_SUMMARY_LENGTH = 500; // 近期摘要（他記得的最近經過），最多幾個字
   const MAX_MEMORY_CANDIDATES = 3;
   const MAX_MEMORY_TEXT_LENGTH = 1000;
 
@@ -285,16 +286,20 @@
 
   function validateChatResponse(response) {
     if (!isObject(response)) throw new Error("互動回覆必須是 JSON 物件。");
-    const keys = Object.keys(response), allowedKeys = ["reply", "state_proposal", "memory_candidates", "inner_thought"];
-    if (!("reply" in response) || !("state_proposal" in response) || keys.some((key) => !allowedKeys.includes(key))) throw new Error("互動回覆只能包含 reply、state_proposal、memory_candidates 與 inner_thought。");
+    const keys = Object.keys(response), allowedKeys = ["reply", "state_proposal", "memory_candidates", "inner_thought", "recent_summary"];
+    if (!("reply" in response) || !("state_proposal" in response) || keys.some((key) => !allowedKeys.includes(key))) throw new Error("互動回覆只能包含 reply、state_proposal、memory_candidates、inner_thought 與 recent_summary。");
     const inner = response.inner_thought ?? "";
     if (typeof inner !== "string" || inner.trim().length > MAX_INNER_LENGTH) throw new Error(`inner_thought 必須是 ${MAX_INNER_LENGTH} 個字元以內的文字。`);
+    // 近期摘要：沒寫就是 null（沿用上一份）。
+    const summary = response.recent_summary ?? null;
+    if (summary !== null && (typeof summary !== "string" || summary.trim().length > MAX_SUMMARY_LENGTH)) throw new Error(`recent_summary 必須是 ${MAX_SUMMARY_LENGTH} 個字元以內的文字。`);
     const reply = response.reply;
     if (typeof reply !== "string" || !reply.trim() || reply.trim().length > MAX_REPLY_LENGTH) throw new Error(`reply 必須是 1 至 ${MAX_REPLY_LENGTH} 個字元的文字。`);
     const proposal = response.state_proposal;
     return {
       reply: reply.trim(),
       inner_thought: inner.trim(),
+      recent_summary: summary === null || !summary.trim() ? null : summary.trim(),
       state_proposal: proposal === null ? null : validateStateProposal(proposal),
       memory_candidates: validateMemoryCandidates(response.memory_candidates === undefined ? [] : response.memory_candidates),
     };
@@ -403,6 +408,21 @@
     return { character: updated, turns: remaining, removed: removed.length, message: target.user_message, kind };
   }
 
+  // ---------- 近期摘要 ----------
+  function chatSummary(turns, chatId) {
+    const found = turnsInChat(turns, chatId).filter((turn) => typeof turn.recent_summary === "string" && turn.recent_summary.trim()).slice(-1)[0];
+    return found ? found.recent_summary : null;
+  }
+  // 送給 AI 的摘要：目前聊天最新的那份；新聊天還沒有的話，用上一段聊天最後的摘要。
+  function summaryForPrompt(character, turns) {
+    const chatId = currentChatId(character), own = chatSummary(turns, chatId);
+    if (own) return { text: own, from: "this_chat" };
+    const chats = character.chats || [], index = chats.findIndex((chat) => chat.chat_id === chatId);
+    const previousId = index > 0 ? chats[index - 1].chat_id : null;
+    const previous = previousId ? chatSummary(turns, previousId) : null;
+    return previous ? { text: previous, from: "previous_chat" } : null;
+  }
+
   // ---------- 時間 ----------
   const WEEKDAYS = ["日", "一", "二", "三", "四", "五", "六"];
   function describeTime(iso) {
@@ -434,11 +454,15 @@
     });
   }
 
-  function buildChatPrompt(character, recentTurns, userMessage, { now = timestamp() } = {}) {
+  function buildChatPrompt(character, recentTurns, userMessage, { now = timestamp(), summary = null } = {}) {
     const realTime = character.chat_settings?.real_time === true;
     const view = characterForPrompt(character);
     delete view.chats; delete view.chat_settings;
-    const supplied = JSON.stringify({ character: realTime ? view : withoutTimes(view), recent_turns: turnsForPrompt(character, recentTurns), user_message: userMessage });
+    const data = { character: realTime ? view : withoutTimes(view) };
+    if (summary?.from === "this_chat") data.recent_summary = summary.text;
+    if (summary?.from === "previous_chat") data.previous_chat_summary = summary.text;
+    data.recent_turns = turnsForPrompt(character, recentTurns); data.user_message = userMessage;
+    const supplied = JSON.stringify(data);
     const timeRule = realTime
       ? `現在的現實時間是：${describeTime(now)}。recent_turns 每一句的 time 是那句話說出的時間。
 角色活在現實時間裡：會感覺到時間經過（例如隔了幾天沒聊、現在是深夜或週末），可以自然地反應，但不必每次都提。`
@@ -453,6 +477,7 @@ profile、modules、memories、relationships 或 metadata。
 {
   "reply": "角色對使用者說的話",
   "inner_thought": "角色心裡想、但沒有說出口的話",
+  "recent_summary": "用角色的角度寫：他記得的最近經過",
   "state_proposal": null 或 {
     "summary": "簡短說明",
     "state_patch": {
@@ -470,6 +495,10 @@ reply 只放角色真的說出口的話。角色心裡的想法、誤會、戒�
 使用者看不到這一欄，所以 reply 不必替它解釋；角色可以表面若無其事，心裡另有想法。沒有特別的想法就填 ""。
 recent_turns 裡每一回合的 inner_thought 是角色當時沒說出口的想法；請延續這些想法（例如還沒解開的誤會），
 除非角色自己決定說出來，否則不要在 reply 裡直接講出 inner_thought 的內容。
+recent_summary 是角色記得的最近經過，用角色自己的角度寫（可以帶著他的感受和誤會，不必是客觀紀錄），${MAX_SUMMARY_LENGTH} 字以內。
+請把輸入資料的 recent_summary（或 previous_chat_summary：上一段聊天結束時他記得的經過）和這次對話合在一起更新。
+recent_turns 只會保留最近幾句，最前面的幾句很快就會看不到，裡面重要的內容要濃縮進 recent_summary。
+真正長期重要的事，另外用 memory_candidates 提出。
 state_proposal 只在這次對話確有足夠依據的心理數值變化時提出；否則填 null。
 即使提出提案，它也必須等待程式驗證與使用者確認才可能保存。
 memory_candidates 最多三筆，只記錄本次對話明確出現且有長期意義的事；沒有則回傳 []。
@@ -501,6 +530,7 @@ ${supplied}`;
     normalize, normalizeMemorySettings, validateStateProposal, applyStateProposal,
     validateUserMessage, validateMemoryCandidates, validateMemoryCapacity, validateChatResponse, applyChatResponse,
     validateRelationship, characterForPrompt, buildChatPrompt, parseJsonObjectText, memoryKey,
+    MAX_SUMMARY_LENGTH, chatSummary, summaryForPrompt,
     FIRST_CHAT_ID, REWIND_LIMIT, currentChatId, turnChatId, turnsInChat, startNewChat, freshCopy,
     snapshotOf, trimSnapshots, rewindKind, rewind, describeTime, withoutTimes, turnsForPrompt,
   };

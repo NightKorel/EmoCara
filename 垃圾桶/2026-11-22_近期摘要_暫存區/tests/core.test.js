@@ -261,3 +261,27 @@ test("回溯：舊對話沒存當時的樣子，只能退文字；舊視窗和�
   const trimmed = trimSnapshots(many, "chat_first");
   assert.equal(trimmed.filter((turn) => "before" in turn).length, REWIND_LIMIT);
 });
+
+// ---------- 近期摘要（2026-11-22） ----------
+test("近期摘要：會保留，沒寫就是 null，太長會被擋", () => {
+  assert.equal(validateChatResponse({ reply: "嗯。", state_proposal: null, recent_summary: " 他今天約我出去，我還在想他是不是在試探我。 " }).recent_summary, "他今天約我出去，我還在想他是不是在試探我。");
+  assert.equal(validateChatResponse({ reply: "嗯。", state_proposal: null }).recent_summary, null);
+  assert.throws(() => validateChatResponse({ reply: "嗯。", state_proposal: null, recent_summary: "很".repeat(501) }), /recent_summary/);
+  assert.throws(() => validateChatResponse({ reply: "嗯。", state_proposal: null, recent_summary: 3 }), /recent_summary/);
+});
+
+test("近期摘要：送給 AI 的是目前聊天最新那份；新聊天用上一段聊天的", () => {
+  const character = normalize(newCharacter("維伊"));
+  const turns = [
+    { id: "a", user_message: "1", character_reply: "嗯", recent_summary: "舊的摘要" },
+    { id: "b", user_message: "2", character_reply: "嗯", recent_summary: "最新的摘要" },
+    { id: "c", user_message: "3", character_reply: "嗯" },
+  ];
+  assert.deepEqual(Core.summaryForPrompt(character, turns), { text: "最新的摘要", from: "this_chat" });
+  const next = startNewChat(character);
+  assert.deepEqual(Core.summaryForPrompt(next, turns), { text: "最新的摘要", from: "previous_chat" });
+  const prompt = buildChatPrompt(next, [], "嗨", { summary: Core.summaryForPrompt(next, turns) });
+  assert.match(prompt, /"previous_chat_summary":"最新的摘要"/);
+  assert.match(buildChatPrompt(character, [], "嗨", { summary: Core.summaryForPrompt(character, turns) }), /"recent_summary":"最新的摘要"/);
+  assert.doesNotMatch(prompt, /舊的摘要/);
+});
