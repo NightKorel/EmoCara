@@ -111,3 +111,7 @@ dialog { border:0; padding:0; border-radius:13px; box-shadow:0 18px 60px rgba(20
 /* Gemini 失敗時的提示（2026-11-22 v0.1.10） */
 .gemini-failed { align-self:stretch; display:grid; gap:8px; margin:2px 0; padding:11px 13px; border-radius:10px; background:#fff3ea; color:#814d3d; font-size:.84rem; line-height:1.55; }
 .gemini-failed p { margin:0; white-space:pre-wrap; }
+/* 自動存：最新那句的「取消」（2026-11-22 v0.1.11） */
+.cancel-turn { display:none; border:0; background:transparent; color:#a0613f; font-size:.76rem; padding:2px 4px; text-decoration:underline dotted; }
+.chat-row.latest:hover .cancel-turn,.chat-row.latest.show-cancel .cancel-turn { display:inline-block; }
+.chat-row.latest .chat-bubble { cursor:pointer; }

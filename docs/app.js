@@ -269,7 +269,7 @@ function renderObserver() {
 }
 
 // ---------- 聊天 ----------
-// 一句話的流程：送出 → 等回覆（pendingMessage）→ 回覆出來等你按確認（pendingChat）→ 確認才存。
+// 一句話的流程：送出 → 等回覆（pendingMessage）→ 回覆通過檢查就直接存；反悔用最新那句的「取消」。
 let pendingMessage = null, waitingReply = false, waitingNote = "", geminiFailure = null, scrollChatToEnd = true, viewingChatId = null, openRewind = null;
 function viewedChatId() { return viewingChatId || Core.currentChatId(current); }
 function viewingOldChat() { return Boolean(current && viewingChatId && viewingChatId !== Core.currentChatId(current)); }
@@ -281,53 +281,30 @@ function shortTime(iso) {
   if (d.toDateString() === now.toDateString()) return hm;
   return d.getFullYear() === now.getFullYear() ? `${d.getMonth() + 1}/${d.getDate()} ${hm}` : `${d.getFullYear()}/${d.getMonth() + 1}/${d.getDate()} ${hm}`;
 }
-function resetPendingChat() { geminiFailure = null; waitingNote = ""; openPeeks.delete("pending"); openRewind = null; pendingChat = null; pendingMessage = null; waitingReply = false; }
+function resetPendingChat() { geminiFailure = null; waitingNote = ""; openPeeks.delete("pending"); openRewind = null; openCancel = null; pendingChat = null; pendingMessage = null; waitingReply = false; }
 function geminiSettings() { const s = Store.getSettings(); return { apiKey: s.gemini_api_key || "", model: s.gemini_model || AI.DEFAULT_GEMINI_MODEL }; }
 function el(tag, className, text) { const node = document.createElement(tag); if (className) node.className = className; if (text !== undefined) node.textContent = text; return node; }
 function bubble(side, text, extraClass = "") { const row = el("div", `chat-row ${side} ${extraClass}`.trim()); row.append(el("div", "chat-bubble", text)); return row; }
 // 偷看：他說的話底下藏著心裡的話、心情、想記住的事，點了才展開。
 const openPeeks = new Set();
-function innerLines(inner, proposal) {
-  const box = el("div", "chat-peek-body");
-  box.append(el("p", "chat-inner", inner === undefined ? "這句沒有記錄內心。" : (inner ? `心裡：${inner}` : "心裡沒有特別的想法。")));
-  if (proposal) box.append(el("p", "chat-peek-line", `心情：${proposal.summary}`));
-  return box;
-}
+// 偷看只看心裡話；心情、記憶放在觀察者分頁，免得出戲。
 function peekToggle(key) {
   const button = el("button", "peek-button", openPeeks.has(key) ? "收起" : "偷看"); button.type = "button";
   button.onclick = () => { openPeeks.has(key) ? openPeeks.delete(key) : openPeeks.add(key); const history = $("#chat-history"), top = history.scrollTop; scrollChatToEnd = false; renderChat(); history.scrollTop = top; };
   return button;
 }
-function savedTurnPeek(turn) {
-  const key = turn.id || turn.created_at, wrap = el("div", "chat-peek");
-  const bar = el("div", "chat-under"); bar.append(el("span", "chat-time", shortTime(turn.created_at)), peekToggle(key)); wrap.append(bar);
-  if (openPeeks.has(key)) {
-    const body = innerLines(turn.inner_thought, turn.state_proposal);
-    if (turn.memory_candidates?.length) body.append(el("p", "chat-peek-line", `記住了：${turn.memory_candidates.map((m) => m.summary).join("；")}`));
-    wrap.append(body);
-  }
-  return wrap;
+function innerLines(inner) {
+  const box = el("div", "chat-peek-body");
+  box.append(el("p", "chat-inner", inner === undefined ? "這句沒有記錄內心。" : (inner ? inner : "心裡沒有特別的想法。")));
+  return box;
 }
-function pendingBox() {
-  const wrap = el("div", "chat-peek");
-  const bar = el("div", "chat-under"); bar.append(peekToggle("pending"));
-  const no = el("button", "secondary small-button", "不要"); no.type = "button"; no.title = "這句不算，回覆和心情都不存"; no.onclick = discardPendingChat;
-  const yes = el("button", "primary small-button", "確認"); yes.type = "button"; yes.title = "保存這句對話和心情變化"; yes.onclick = applyPendingChat;
-  const actions = el("span", "chat-confirm-actions"); actions.append(no, yes); bar.append(actions); wrap.append(bar);
-  if (openPeeks.has("pending")) {
-    const body = innerLines(pendingChat.response.inner_thought, pendingChat.response.state_proposal);
-    const candidates = pendingChat.response.memory_candidates || [];
-    if (candidates.length) {
-      body.append(el("p", "chat-peek-line", "想記住的事（勾了才會存）："));
-      candidates.forEach((candidate) => {
-        const label = el("label", "memory-candidate"), input = el("input"); input.type = "checkbox"; const key = Core.memoryKey(candidate);
-        input.checked = pendingChat.selectedMemoryKeys.includes(key);
-        input.onchange = () => { pendingChat.selectedMemoryKeys = input.checked ? [...pendingChat.selectedMemoryKeys, key] : pendingChat.selectedMemoryKeys.filter((item) => item !== key); };
-        label.append(input, el("span", "", `${candidate.summary}（${candidate.reason}）`)); body.append(label);
-      });
-    }
-    wrap.append(body);
-  }
+let openCancel = null;
+function savedTurnPeek(turn, latest) {
+  const key = turn.id || turn.created_at, wrap = el("div", "chat-peek");
+  const bar = el("div", "chat-under"); bar.append(el("span", "chat-time", shortTime(turn.created_at)), peekToggle(key));
+  if (latest) { const cancel = el("button", "cancel-turn", "取消"); cancel.type = "button"; cancel.title = "這一來一回不算，你的話放回輸入框"; cancel.onclick = () => rewindFrom(turn.id, { quiet: true }); bar.append(cancel); }
+  wrap.append(bar);
+  if (openPeeks.has(key)) wrap.append(innerLines(turn.inner_thought));
   return wrap;
 }
 function renderChat() {
@@ -342,7 +319,10 @@ function renderChat() {
     mine.firstChild.onclick = () => tapMyBubble(turn, allTurns);
     if (openRewind === turn.id) { const again = el("button", "rewind-button", "↺ 從這句重來"); again.type = "button"; again.onclick = () => rewindFrom(turn.id); mine.append(again); }
     history.append(mine);
-    const row = bubble("them", turn.character_reply); row.append(savedTurnPeek(turn)); history.append(row);
+    const latest = !viewingOldChat() && !pendingMessage && turn === chatTurns[chatTurns.length - 1];
+    const row = bubble("them", turn.character_reply, latest ? "latest" : ""); row.append(savedTurnPeek(turn, latest));
+    if (latest) { if (openCancel === turn.id) row.classList.add("show-cancel"); row.firstChild.onclick = () => { openCancel = openCancel === turn.id ? null : turn.id; row.classList.toggle("show-cancel", openCancel === turn.id); }; }
+    history.append(row);
   });
   const old = viewingOldChat();
   if (pendingMessage && !old) history.append(bubble("me", pendingMessage, "pending"));
@@ -354,7 +334,6 @@ function renderChat() {
     const manualButton = el("button", "primary small-button", "改用手動"); manualButton.type = "button"; manualButton.onclick = switchToManual;
     actions.append(cancel, manualButton); box.append(actions); history.append(box);
   }
-  if (pendingChat && !old) { const row = bubble("them", pendingChat.response.reply, "pending"); row.append(pendingBox()); history.append(row); }
   if (scrollChatToEnd) history.scrollTop = history.scrollHeight;
   scrollChatToEnd = true;
   const manual = $("#chat-mode").value === "manual", ready = Boolean(geminiSettings().apiKey);
@@ -399,7 +378,8 @@ function tapMyBubble(turn, allTurns) {
   openRewind = openRewind === turn.id ? null : turn.id;
   const history = $("#chat-history"), top = history.scrollTop; scrollChatToEnd = false; renderChat(); history.scrollTop = top;
 }
-function rewindFrom(turnId) {
+// quiet：最新那句的「取消」，只退一句又退得乾淨時不跳確認框。
+function rewindFrom(turnId, { quiet = false } = {}) {
   try {
     const result = Core.rewind(current, Store.allTurns(current.character_id), turnId);
     const lines = [`從「${result.message.slice(0, 30)}${result.message.length > 30 ? "……" : ""}」這句重來？`, "",
@@ -407,13 +387,14 @@ function rewindFrom(turnId) {
     if (result.kind === "full") lines.push("・他的心情、記住的事、心裡的話，會退回你講這句之前。");
     else lines.push("・注意：這句是更新前的舊對話，沒有存當時他的樣子。對話會消失，但他現在的心情和記住的事退不回去，會維持現在的樣子。");
     lines.push("・你這句話會放回輸入框，可以改一改重講。");
-    if (pendingMessage) lines.push("・還沒確認的那句也會一起丟掉。");
+    if (pendingMessage) lines.push("・還在等回覆的那句也會一起丟掉。");
     lines.push("", "確定要重來嗎？");
-    if (!confirm(lines.join("\n"))) return;
+    const skipConfirm = quiet && result.kind === "full" && result.removed === 1 && !pendingMessage;
+    if (!skipConfirm && !confirm(lines.join("\n"))) return;
     current = Store.saveTurnsAndCharacter(Core.normalize(result.character), result.turns);
     resetPendingChat(); $("#manual-chat-prompt").value = ""; $("#manual-chat-response").value = "";
     $("#chat-message").value = result.message; growComposer();
-    refreshChatTurns(); refreshList(); render(); toast("已經回到那句之前");
+    refreshChatTurns(); refreshList(); render(); toast(skipConfirm ? "這句取消了，你的話放回輸入框" : "已經回到那句之前");
   } catch (error) { toast(error.message, true); }
 }
 
@@ -468,14 +449,12 @@ function openNewChat() {
   };
   dialog.showModal();
 }
-function selectedMemoryCandidates() { const selected = new Set(pendingChat?.selectedMemoryKeys || []); return (pendingChat?.response.memory_candidates || []).filter((candidate) => selected.has(Core.memoryKey(candidate))); }
-function showChatPreview(userMessage, response) { pendingChat = { userMessage, response, selectedMemoryKeys: [] }; renderChat(); }
 // 這句不算：把剛剛打的字放回輸入框，方便改一改重送。
 function giveBackMessage() { const box = $("#chat-message"); if (pendingMessage && !box.value.trim()) { box.value = pendingMessage; growComposer(); } }
 async function generateChat(event) {
   event.preventDefault();
   if (waitingReply) return;
-  if (pendingMessage) { toast("上一句還沒處理完：先按「確認」或「不要」。", true); return; }
+  if (pendingMessage) { toast("上一句還在等回覆：先貼上回覆，或按「取消這句」。", true); return; }
   try {
     const userMessage = Core.validateUserMessage($("#chat-message").value); const manual = $("#chat-mode").value === "manual";
     const settings = geminiSettings();
@@ -489,7 +468,7 @@ async function generateChat(event) {
       let response;
       try { response = Core.validateChatResponse(Core.parseJsonObjectText(text)); }
       catch (error) { throw new Error(`Gemini 的回覆沒通過檢查：${error.message}`); }
-      waitingReply = false; waitingNote = ""; showChatPreview(userMessage, response);
+      waitingReply = false; waitingNote = ""; saveReply(userMessage, response);
     } catch (error) { waitingReply = false; waitingNote = ""; geminiFailure = `${error.message}\n要換成手動複製貼上嗎？剛剛那句不用重打。`; renderChat(); }
   } catch (error) { toast(error.message, true); }
 }
@@ -519,7 +498,7 @@ function parseManualChatResponse() {
     let response;
     try { response = Core.validateChatResponse(Core.parseJsonObjectText($("#manual-chat-response").value)); }
     catch (error) { throw new Error(`貼回的內容沒通過檢查：${error.message}`); }
-    showChatPreview(pendingMessage, response);
+    saveReply(pendingMessage, response);
   } catch (error) { toast(error.message, true); }
 }
 async function copyText(text, message) {
@@ -528,19 +507,22 @@ async function copyText(text, message) {
 }
 function copyChatPrompt() { const prompt = $("#manual-chat-prompt").value; if (!prompt) { toast("請先送出一句話。", true); return; } copyText(prompt, "提示詞已複製"); }
 function toggleChatPrompt() { const box = $("#manual-chat-prompt"); box.hidden = !box.hidden; $("#show-chat-prompt").textContent = box.hidden ? "看提示詞內容" : "收起提示詞"; }
-function applyPendingChat() {
-  if (!pendingChat) return;
+// 他回完直接存（已經通過 core.js 檢查）。想記住的事放得下的都存，滿了那層就不存。
+function saveReply(userMessage, rawResponse) {
   try {
-    const userMessage = Core.validateUserMessage(pendingChat.userMessage);
-    const { updated, response, selected } = Core.applyChatResponse(current, pendingChat.response, selectedMemoryCandidates());
+    const message = Core.validateUserMessage(userMessage), clean = Core.validateChatResponse(rawResponse);
+    const { kept, skipped } = Core.fittingMemories(current, clean.memory_candidates);
+    const { updated, response, selected } = Core.applyChatResponse(current, clean, kept);
     const chatId = Core.currentChatId(current), before = Core.snapshotOf(current);
     // AI 這次沒寫摘要的話，沿用這段聊天上一份。
     const recentSummary = response.recent_summary || Core.chatSummary(Store.allTurns(current.character_id), chatId) || undefined;
-    current = Store.saveTurn(updated, { contract_version: Core.CHAT_CONTRACT_VERSION, chat_id: chatId, user_message: userMessage, character_reply: response.reply, inner_thought: response.inner_thought, recent_summary: recentSummary, state_proposal: response.state_proposal, memory_candidates: selected, before });
+    current = Store.saveTurn(updated, { contract_version: Core.CHAT_CONTRACT_VERSION, chat_id: chatId, user_message: message, character_reply: response.reply, inner_thought: response.inner_thought, recent_summary: recentSummary, state_proposal: response.state_proposal, memory_candidates: selected, before });
     Store.replaceTurns(current.character_id, Core.trimSnapshots(Store.allTurns(current.character_id), chatId));
     resetPendingChat(); $("#manual-chat-prompt").value = ""; $("#manual-chat-response").value = "";
     refreshChatTurns(); refreshList(); render(); $("#chat-message").focus();
-  } catch (error) { toast(error.message, true); }
+    if (skipped.length) toast(`記憶滿了，有 ${skipped.length} 件想記住的事沒存（可以到「角色 → 進階」調大記憶容量）。`);
+    return true;
+  } catch (error) { toast(error.message, true); return false; }
 }
 function discardPendingChat() { giveBackMessage(); resetPendingChat(); $("#manual-chat-prompt").value = ""; $("#manual-chat-response").value = ""; renderChat(); toast("這句不算，剛剛打的字放回輸入框了"); }
 // 輸入框跟著字數長高，最多長到大約六行。

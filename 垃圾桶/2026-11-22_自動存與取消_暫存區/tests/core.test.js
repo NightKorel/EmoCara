@@ -303,3 +303,18 @@ test("整段回覆連劇透提醒和程式碼框一起貼上，也讀得懂", ()
   ]) assert.equal(parseJsonObjectText(text).reply, "嗯。");
   assert.throws(() => parseJsonObjectText("以下是給程式看的資料，含劇透"), /不是有效的 JSON/);
 });
+
+// ---------- 自動存記憶（2026-11-22） ----------
+test("自動存記憶：只存放得下的，滿了那層不存，舊記憶不動", () => {
+  const character = normalize({ ...newCharacter("維伊"), memory_settings: { core: { max_items: 1, max_chars: 200 }, important: { max_items: 15, max_chars: 120 }, ordinary: { max_items: 30, max_chars: 60 } } });
+  character.memories.push(Core.newMemory("舊的核心記憶", "core", "很重要"));
+  const { kept, skipped } = Core.fittingMemories(character, [
+    { summary: "新的核心", importance: "core", reason: "放不下" },
+    { summary: "普通的事", importance: "ordinary", reason: "放得下" },
+    { summary: "很".repeat(70), importance: "ordinary", reason: "太長" },
+  ]);
+  assert.deepEqual(kept.map((m) => m.summary), ["普通的事"]);
+  assert.equal(skipped.length, 2);
+  const { updated } = applyChatResponse(character, { reply: "嗯。", state_proposal: null, memory_candidates: [...kept, ...skipped] }, kept);
+  assert.equal(updated.memories.length, 2);
+});

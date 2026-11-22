@@ -33,6 +33,8 @@
 - 第一版是 ChatGPT 幫納可做的電腦版（v0.1.0，Python＋SQLite），已搬進 `垃圾桶/2026-11-22_電腦版Python/`。
 - 2026-11-22 放上 GitHub：https://github.com/NightKorel/EmoCara 。
 - 2026-11-22 起改成純網頁版（v0.1.3），在 `docs/`，用 GitHub Pages 發佈，手機和電腦打開網址就能玩。repo 要改成公開才能開 Pages（見下面「角色資料不進 GitHub」）。
+- 2026-11-22 GitHub Pages 已經上線（網址 https://nightkorel.github.io/EmoCara/ ），repo 已公開。
+- 2026-11-22 這一輪做到 v0.1.11：聊天泡泡、心裡話（偷看）、近期摘要、現實時間開關、從這句重來／取消、開新聊天、手動模式防劇透與一鍵貼上、Gemini 塞車重試。細節看 `更新日誌.txt`。
 - 接手時先讀：`納可要求清單.txt`（最上面是下一步）→ `更新日誌.txt` 最上面幾筆 → `README.md`、`ROADMAP.md`（ROADMAP 是 GPT 寫的原始規劃，裡面講的 Python 是舊電腦版）。
 
 ---

@@ -284,6 +284,19 @@
     }
   }
 
+  // 自動存記憶用：挑出還放得下的（那一層滿了、或字太多的就不存），不會擠掉舊記憶。
+  function fittingMemories(character, candidates) {
+    const settings = normalizeMemorySettings(character.memory_settings);
+    const existing = Array.isArray(character.memories) ? character.memories : [];
+    const kept = [], skipped = [];
+    for (const item of validateMemoryCandidates(candidates || [])) {
+      const tier = settings[item.importance];
+      const count = existing.filter((memory) => isObject(memory) && memory.importance === item.importance).length + kept.filter((memory) => memory.importance === item.importance).length;
+      if (count >= tier.max_items || item.summary.length + item.reason.length > tier.max_chars) skipped.push(item); else kept.push(item);
+    }
+    return { kept, skipped };
+  }
+
   function validateChatResponse(response) {
     if (!isObject(response)) throw new Error("互動回覆必須是 JSON 物件。");
     const keys = Object.keys(response), allowedKeys = ["reply", "state_proposal", "memory_candidates", "inner_thought", "recent_summary"];
@@ -533,7 +546,7 @@ ${supplied}`;
     normalize, normalizeMemorySettings, validateStateProposal, applyStateProposal,
     validateUserMessage, validateMemoryCandidates, validateMemoryCapacity, validateChatResponse, applyChatResponse,
     validateRelationship, characterForPrompt, buildChatPrompt, parseJsonObjectText, memoryKey,
-    MAX_SUMMARY_LENGTH, chatSummary, summaryForPrompt,
+    MAX_SUMMARY_LENGTH, chatSummary, summaryForPrompt, fittingMemories,
     FIRST_CHAT_ID, REWIND_LIMIT, currentChatId, turnChatId, turnsInChat, startNewChat, freshCopy,
     snapshotOf, trimSnapshots, rewindKind, rewind, describeTime, withoutTimes, turnsForPrompt,
   };
