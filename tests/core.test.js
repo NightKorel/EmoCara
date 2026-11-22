@@ -168,3 +168,22 @@ for (const dimensions of [{ trust: 50 }, { trust: 50, intimacy: 50, safety: 50, 
     assert.throws(() => validateRelationship({ target_name: "某人", target_type: "person", dimensions, notes: "" }));
   });
 }
+
+// ---------- 隱藏內心（2026-11-22） ----------
+test("心裡沒說出口的話會被保留，沒寫就是空的", () => {
+  const clean = validateChatResponse({ reply: "沒事啊。", inner_thought: "  他剛剛是不是在試探我……先別表現出來。 ", state_proposal: null, memory_candidates: [] });
+  assert.equal(clean.inner_thought, "他剛剛是不是在試探我……先別表現出來。");
+  assert.equal(validateChatResponse({ reply: "嗯。", state_proposal: null }).inner_thought, "");
+});
+
+test("心裡的話格式不對會被拒絕", () => {
+  assert.throws(() => validateChatResponse({ reply: "嗯。", inner_thought: { secret: 1 }, state_proposal: null }), /inner_thought/);
+  assert.throws(() => validateChatResponse({ reply: "嗯。", inner_thought: "很".repeat(2001), state_proposal: null }), /inner_thought/);
+  assert.throws(() => validateChatResponse({ reply: "嗯。", inner_thought: "" }), /只能包含/);
+});
+
+test("提示詞會請 AI 寫心裡的話，並把之前沒說出口的想法一起送回去", () => {
+  const prompt = buildChatPrompt(newCharacter("維伊"), [{ user_message: "你今天怪怪的", character_reply: "有嗎？", inner_thought: "他是不是發現我在生氣" }], "真的沒事？");
+  assert.match(prompt, /"inner_thought"/);
+  assert.match(prompt, /他是不是發現我在生氣/);
+});

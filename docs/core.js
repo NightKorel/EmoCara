@@ -5,9 +5,10 @@
   "use strict";
 
   const SCHEMA_VERSION = "0.1";
-  const CHAT_CONTRACT_VERSION = "chat_turn/v0.2";
+  const CHAT_CONTRACT_VERSION = "chat_turn/v0.3";
   const MAX_MESSAGE_LENGTH = 4000;
   const MAX_REPLY_LENGTH = 6000;
+  const MAX_INNER_LENGTH = 2000; // 心裡沒說出口的話，最多幾個字
   const MAX_MEMORY_CANDIDATES = 3;
   const MAX_MEMORY_TEXT_LENGTH = 1000;
 
@@ -279,12 +280,16 @@
 
   function validateChatResponse(response) {
     if (!isObject(response)) throw new Error("互動回覆必須是 JSON 物件。");
-    if (!sameKeys(response, ["reply", "state_proposal"]) && !sameKeys(response, ["reply", "state_proposal", "memory_candidates"])) throw new Error("互動回覆只能包含 reply、state_proposal 與 memory_candidates。");
+    const keys = Object.keys(response), allowedKeys = ["reply", "state_proposal", "memory_candidates", "inner_thought"];
+    if (!("reply" in response) || !("state_proposal" in response) || keys.some((key) => !allowedKeys.includes(key))) throw new Error("互動回覆只能包含 reply、state_proposal、memory_candidates 與 inner_thought。");
+    const inner = response.inner_thought ?? "";
+    if (typeof inner !== "string" || inner.trim().length > MAX_INNER_LENGTH) throw new Error(`inner_thought 必須是 ${MAX_INNER_LENGTH} 個字元以內的文字。`);
     const reply = response.reply;
     if (typeof reply !== "string" || !reply.trim() || reply.trim().length > MAX_REPLY_LENGTH) throw new Error(`reply 必須是 1 至 ${MAX_REPLY_LENGTH} 個字元的文字。`);
     const proposal = response.state_proposal;
     return {
       reply: reply.trim(),
+      inner_thought: inner.trim(),
       state_proposal: proposal === null ? null : validateStateProposal(proposal),
       memory_candidates: validateMemoryCandidates(response.memory_candidates === undefined ? [] : response.memory_candidates),
     };
@@ -353,6 +358,7 @@ profile、modules、memories、relationships 或 metadata。
 只回傳 JSON 物件，不要 Markdown 或額外文字。格式必須是：
 {
   "reply": "角色對使用者說的話",
+  "inner_thought": "角色心裡想、但沒有說出口的話",
   "state_proposal": null 或 {
     "summary": "簡短說明",
     "state_patch": {
@@ -366,6 +372,10 @@ profile、modules、memories、relationships 或 metadata。
     {"summary": "值得保存的互動事實或感受", "importance": "ordinary、important 或 core", "reason": "為何值得保留"}
   ]
 }
+reply 只放角色真的說出口的話。角色心裡的想法、誤會、戒心、沒說出口的感受放在 inner_thought，
+使用者看不到這一欄，所以 reply 不必替它解釋；角色可以表面若無其事，心裡另有想法。沒有特別的想法就填 ""。
+recent_turns 裡每一回合的 inner_thought 是角色當時沒說出口的想法；請延續這些想法（例如還沒解開的誤會），
+除非角色自己決定說出來，否則不要在 reply 裡直接講出 inner_thought 的內容。
 state_proposal 只在這次對話確有足夠依據的心理數值變化時提出；否則填 null。
 即使提出提案，它也必須等待程式驗證與使用者確認才可能保存。
 memory_candidates 最多三筆，只記錄本次對話明確出現且有長期意義的事；沒有則回傳 []。

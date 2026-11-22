@@ -232,6 +232,16 @@ function saveSettings(event) {
 // ---------- 觀察者 ----------
 function renderObserver() {
   if (!current) return;
+  const timeline = $("#observer-inner"); timeline.innerHTML = "";
+  if (!chatTurns.length) timeline.append(el("p", "observer-empty", "還沒有對話。"));
+  [...chatTurns].reverse().forEach((turn) => {
+    const card = el("article", "observer-thought");
+    card.append(el("small", "", formatTime(turn.created_at)));
+    card.append(el("p", "thought-said", `你：${turn.user_message}`), el("p", "thought-said", `他說：${turn.character_reply}`));
+    card.append(el("p", "thought-inner", turn.inner_thought === undefined ? "（這句沒有記錄內心）" : (turn.inner_thought ? `心裡：${turn.inner_thought}` : "心裡：沒有特別的想法")));
+    if (turn.state_proposal) card.append(el("p", "thought-mood", `心情：${turn.state_proposal.summary}`));
+    timeline.append(card);
+  });
   const state = $("#observer-state"); state.innerHTML = "";
   const metrics = [["情緒效價", current.state.mood?.valence], ["喚起程度", current.state.mood?.arousal], ["安全感", current.state.psychological?.security], ["焦慮", current.state.psychological?.anxiety], ["孤獨感", current.state.psychological?.loneliness], ["情緒穩定度", current.state.psychological?.emotional_stability]];
   metrics.forEach(([label, value]) => { const card = document.createElement("div"); card.className = "observer-metric"; const title = document.createElement("small"); title.textContent = label; const number = document.createElement("strong"); number.textContent = value ?? "—"; card.append(title, number); state.append(card); });
@@ -256,37 +266,56 @@ function renderObserver() {
 
 // ---------- 聊天 ----------
 // 一句話的流程：送出 → 等回覆（pendingMessage）→ 回覆出來等你按確認（pendingChat）→ 確認才存。
-let pendingMessage = null, waitingReply = false;
+let pendingMessage = null, waitingReply = false, scrollChatToEnd = true;
 function refreshChatTurns() { chatTurns = current ? Store.listTurns(current.character_id, 30) : []; }
-function resetPendingChat() { pendingChat = null; pendingMessage = null; waitingReply = false; }
+function resetPendingChat() { openPeeks.delete("pending"); pendingChat = null; pendingMessage = null; waitingReply = false; }
 function geminiSettings() { const s = Store.getSettings(); return { apiKey: s.gemini_api_key || "", model: s.gemini_model || AI.DEFAULT_GEMINI_MODEL }; }
 function el(tag, className, text) { const node = document.createElement(tag); if (className) node.className = className; if (text !== undefined) node.textContent = text; return node; }
 function bubble(side, text, extraClass = "") { const row = el("div", `chat-row ${side} ${extraClass}`.trim()); row.append(el("div", "chat-bubble", text)); return row; }
-function turnNotes(turn) {
-  const notes = el("div", "chat-notes");
-  if (turn.state_proposal) { const box = el("details", "chat-note"); box.append(el("summary", "", `心情：${turn.state_proposal.summary}`), el("pre", "", JSON.stringify(turn.state_proposal.state_patch, null, 2))); notes.append(box); }
-  if (turn.memory_candidates?.length) { const box = el("details", "chat-note"); box.append(el("summary", "", `記住了 ${turn.memory_candidates.length} 件事`), el("pre", "", turn.memory_candidates.map((m) => `[${m.importance}] ${m.summary}\n${m.reason}`).join("\n\n"))); notes.append(box); }
-  return notes.childElementCount ? notes : null;
+// 偷看：他說的話底下藏著心裡的話、心情、想記住的事，點了才展開。
+const openPeeks = new Set();
+function innerLines(inner, proposal) {
+  const box = el("div", "chat-peek-body");
+  box.append(el("p", "chat-inner", inner === undefined ? "這句沒有記錄內心。" : (inner ? `心裡：${inner}` : "心裡沒有特別的想法。")));
+  if (proposal) box.append(el("p", "chat-peek-line", `心情：${proposal.summary}`));
+  return box;
+}
+function peekToggle(key) {
+  const button = el("button", "peek-button", openPeeks.has(key) ? "收起" : "偷看"); button.type = "button";
+  button.onclick = () => { openPeeks.has(key) ? openPeeks.delete(key) : openPeeks.add(key); const history = $("#chat-history"), top = history.scrollTop; scrollChatToEnd = false; renderChat(); history.scrollTop = top; };
+  return button;
+}
+function savedTurnPeek(turn) {
+  const key = turn.id || turn.created_at, wrap = el("div", "chat-peek");
+  const bar = el("div", "chat-under"); bar.append(peekToggle(key)); wrap.append(bar);
+  if (openPeeks.has(key)) {
+    const body = innerLines(turn.inner_thought, turn.state_proposal);
+    if (turn.memory_candidates?.length) body.append(el("p", "chat-peek-line", `記住了：${turn.memory_candidates.map((m) => m.summary).join("；")}`));
+    wrap.append(body);
+  }
+  return wrap;
 }
 function pendingBox() {
-  const box = el("div", "chat-confirm");
-  const proposal = pendingChat.response.state_proposal;
-  box.append(el("p", "chat-confirm-line", proposal ? `心情：${proposal.summary}` : "心情沒有變化"));
-  const candidates = pendingChat.response.memory_candidates || [];
-  if (candidates.length) {
-    box.append(el("p", "chat-confirm-line", "想記住的事（勾了才會存）："));
-    candidates.forEach((candidate) => {
-      const label = el("label", "memory-candidate"), input = el("input"); input.type = "checkbox"; const key = Core.memoryKey(candidate);
-      input.checked = pendingChat.selectedMemoryKeys.includes(key);
-      input.onchange = () => { pendingChat.selectedMemoryKeys = input.checked ? [...pendingChat.selectedMemoryKeys, key] : pendingChat.selectedMemoryKeys.filter((item) => item !== key); };
-      label.append(input, el("span", "", `${candidate.summary}（${candidate.reason}）`)); box.append(label);
-    });
+  const wrap = el("div", "chat-peek");
+  const bar = el("div", "chat-under"); bar.append(peekToggle("pending"));
+  const no = el("button", "secondary small-button", "不要"); no.type = "button"; no.title = "這句不算，回覆和心情都不存"; no.onclick = discardPendingChat;
+  const yes = el("button", "primary small-button", "確認"); yes.type = "button"; yes.title = "保存這句對話和心情變化"; yes.onclick = applyPendingChat;
+  const actions = el("span", "chat-confirm-actions"); actions.append(no, yes); bar.append(actions); wrap.append(bar);
+  if (openPeeks.has("pending")) {
+    const body = innerLines(pendingChat.response.inner_thought, pendingChat.response.state_proposal);
+    const candidates = pendingChat.response.memory_candidates || [];
+    if (candidates.length) {
+      body.append(el("p", "chat-peek-line", "想記住的事（勾了才會存）："));
+      candidates.forEach((candidate) => {
+        const label = el("label", "memory-candidate"), input = el("input"); input.type = "checkbox"; const key = Core.memoryKey(candidate);
+        input.checked = pendingChat.selectedMemoryKeys.includes(key);
+        input.onchange = () => { pendingChat.selectedMemoryKeys = input.checked ? [...pendingChat.selectedMemoryKeys, key] : pendingChat.selectedMemoryKeys.filter((item) => item !== key); };
+        label.append(input, el("span", "", `${candidate.summary}（${candidate.reason}）`)); body.append(label);
+      });
+    }
+    wrap.append(body);
   }
-  const actions = el("div", "chat-confirm-actions");
-  const no = el("button", "secondary", "不要"); no.type = "button"; no.title = "這句不算，回覆和心情都不存"; no.onclick = discardPendingChat;
-  const yes = el("button", "primary", "確認"); yes.type = "button"; yes.title = "保存這句對話和心情變化"; yes.onclick = applyPendingChat;
-  actions.append(no, yes); box.append(actions);
-  return box;
+  return wrap;
 }
 function renderChat() {
   if (!current) return;
@@ -296,12 +325,13 @@ function renderChat() {
   if (!chatTurns.length && !pendingMessage) history.append(el("p", "chat-empty", `還沒有對話。在下面打字，跟 ${name} 說說話吧。`));
   chatTurns.forEach((turn) => {
     history.append(bubble("me", turn.user_message));
-    const row = bubble("them", turn.character_reply); const notes = turnNotes(turn); if (notes) row.append(notes); history.append(row);
+    const row = bubble("them", turn.character_reply); row.append(savedTurnPeek(turn)); history.append(row);
   });
   if (pendingMessage) history.append(bubble("me", pendingMessage, "pending"));
   if (waitingReply) history.append(bubble("them", "……", "typing"));
   if (pendingChat) { const row = bubble("them", pendingChat.response.reply, "pending"); row.append(pendingBox()); history.append(row); }
-  history.scrollTop = history.scrollHeight;
+  if (scrollChatToEnd) history.scrollTop = history.scrollHeight;
+  scrollChatToEnd = true;
   const manual = $("#chat-mode").value === "manual", ready = Boolean(geminiSettings().apiKey);
   $("#manual-chat-workflow").hidden = !(manual && pendingMessage && !pendingChat);
   $("#model-status").textContent = manual ? "手動模式：不連網" : (ready ? "自動模式：Gemini" : "還沒在「設定」填 Gemini 鑰匙");
@@ -334,6 +364,15 @@ async function generateChat(event) {
     } catch (error) { waitingReply = false; giveBackMessage(); pendingMessage = null; renderChat(); throw error; }
   } catch (error) { toast(error.message, true); }
 }
+// 按一下就讀剪貼簿（瀏覽器規定一定要按，網頁不能自己偷讀）。讀不到就打開下面的框框讓你自己貼。
+async function pasteChatResponse() {
+  if (!pendingMessage) { toast("先在下面打字送出。", true); return; }
+  let text = "";
+  try { text = await navigator.clipboard.readText(); }
+  catch { $(".manual-fallback").open = true; toast("瀏覽器不讓網頁讀剪貼簿，請貼在下面的框框裡。", true); return; }
+  if (!text.trim()) { toast("剪貼簿是空的，先去複製 AI 的回覆。", true); return; }
+  $("#manual-chat-response").value = text; parseManualChatResponse();
+}
 function parseManualChatResponse() {
   try {
     if (!pendingMessage) throw new Error("先在下面打字送出。");
@@ -354,7 +393,7 @@ function applyPendingChat() {
   try {
     const userMessage = Core.validateUserMessage(pendingChat.userMessage);
     const { updated, response, selected } = Core.applyChatResponse(current, pendingChat.response, selectedMemoryCandidates());
-    current = Store.saveTurn(updated, { contract_version: Core.CHAT_CONTRACT_VERSION, user_message: userMessage, character_reply: response.reply, state_proposal: response.state_proposal, memory_candidates: selected });
+    current = Store.saveTurn(updated, { contract_version: Core.CHAT_CONTRACT_VERSION, user_message: userMessage, character_reply: response.reply, inner_thought: response.inner_thought, state_proposal: response.state_proposal, memory_candidates: selected });
     resetPendingChat(); $("#manual-chat-prompt").value = ""; $("#manual-chat-response").value = "";
     refreshChatTurns(); refreshList(); render(); $("#chat-message").focus();
   } catch (error) { toast(error.message, true); }
@@ -380,7 +419,7 @@ $("#memory-settings-form").onsubmit = saveMemorySettings; $("#save-state").oncli
 $("#add-relationship").onclick = addRelationship; $("#import-file").onchange = importFile; $("#export-button").onclick = exportCurrent; $("#delete-character").onclick = deleteCharacter;
 $("#copy-json").onclick = () => copyText(JSON.stringify(current, null, 2), "完整 JSON 已複製");
 $("#open-settings").onclick = openSettings; $("#settings-form").onsubmit = saveSettings;
-$("#chat-form").onsubmit = generateChat; $("#chat-mode").onchange = renderChat; $("#copy-chat-prompt").onclick = copyChatPrompt; $("#show-chat-prompt").onclick = toggleChatPrompt; $("#parse-chat-response").onclick = parseManualChatResponse; $("#cancel-manual-chat").onclick = discardPendingChat;
+$("#chat-form").onsubmit = generateChat; $("#chat-mode").onchange = renderChat; $("#copy-chat-prompt").onclick = copyChatPrompt; $("#show-chat-prompt").onclick = toggleChatPrompt; $("#parse-chat-response").onclick = parseManualChatResponse; $("#paste-chat-response").onclick = pasteChatResponse; $("#cancel-manual-chat").onclick = discardPendingChat;
 $("#chat-message").onkeydown = composerKeydown; $("#chat-message").oninput = growComposer;
 document.querySelectorAll(".tab").forEach((button) => { button.onclick = () => showTab(button.dataset.tab); });
 // 展開折起來的區塊時，如果展開的內容跑到畫面外面（例如在頁尾），就捲過去讓它看得到。

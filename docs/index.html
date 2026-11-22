@@ -9,7 +9,7 @@
   <body>
     <div class="app-shell">
       <aside class="sidebar">
-        <div class="brand"><span class="spark">✦</span><div><strong>情緒模擬器</strong><small>角色檔案 v0.1.5</small></div></div>
+        <div class="brand"><span class="spark">✦</span><div><strong>情緒模擬器</strong><small>角色檔案 v0.1.6</small></div></div>
         <button id="new-character" class="primary wide">＋ 新增角色</button>
         <label class="import-button wide">⇧ 匯入角色<input id="import-file" type="file" accept="application/json,.json" /></label>
         <nav><p class="nav-label">我的角色</p><div id="character-list" class="character-list"></div></nav>
@@ -39,9 +39,12 @@
               <p class="manual-step">1. 按「複製提示詞」，貼給網頁上的 AI。</p>
               <div class="chat-actions left"><button id="copy-chat-prompt" class="secondary" type="button">複製提示詞</button><button id="show-chat-prompt" class="text-button" type="button">看提示詞內容</button></div>
               <textarea id="manual-chat-prompt" rows="8" class="code-input" readonly hidden></textarea>
-              <p class="manual-step">2. 把 AI 回的整段貼在這裡。</p>
-              <textarea id="manual-chat-response" rows="4" class="code-input" placeholder="整段貼上就好，被 ```json 包住也可以。"></textarea>
-              <div class="chat-actions"><button id="cancel-manual-chat" class="secondary" type="button">取消這句</button><button id="parse-chat-response" class="primary" type="button">貼上回覆</button></div>
+              <p class="manual-step">2. 複製 AI 回的整段，回來按「從剪貼簿貼上」。</p>
+              <div class="chat-actions left"><button id="paste-chat-response" class="primary" type="button">從剪貼簿貼上</button><button id="cancel-manual-chat" class="secondary" type="button">取消這句</button></div>
+              <details class="manual-fallback"><summary>貼不進來？改成自己貼</summary>
+                <textarea id="manual-chat-response" rows="4" class="code-input" placeholder="整段貼上就好，被 ```json 包住也可以。"></textarea>
+                <div class="chat-actions"><button id="parse-chat-response" class="secondary" type="button">用框裡的內容</button></div>
+              </details>
             </section>
             <form id="chat-form" class="chat-composer">
               <textarea id="chat-message" rows="1" maxlength="4000" placeholder="想跟他說什麼？" aria-label="想對角色說的話"></textarea>
@@ -107,6 +110,7 @@
           </section>
           <section id="panel-observer" class="panel tab-panel" hidden>
             <div class="section-heading"><div><h2>觀察者</h2><p>僅在你主動開啟此頁時顯示；不會在聊天中自動曝光角色的內在資料。</p></div><span class="observer-badge">只讀</span></div>
+            <section class="observer-section"><div class="observer-title"><h3>內心時間線</h3><span class="observer-note">最近 30 句，新的在上面</span></div><div id="observer-inner" class="observer-inner"></div></section>
             <section class="observer-section"><h3>目前心理狀態</h3><div id="observer-state" class="observer-metrics"></div></section>
             <section class="observer-section"><div class="observer-title"><h3>已確認記憶</h3><span id="observer-memory-count" class="badge">0</span></div><div id="observer-memories" class="observer-memories"></div></section>
             <section class="observer-section"><h3>關係資料</h3><p id="observer-relationships" class="observer-empty"></p><div id="observer-relationship-list" class="observer-relationships"></div></section>

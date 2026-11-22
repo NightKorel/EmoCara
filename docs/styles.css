@@ -66,3 +66,26 @@ dialog { border:0; padding:0; border-radius:13px; box-shadow:0 18px 60px rgba(20
 .chat-mode-row label { display:flex; align-items:center; gap:6px; }
 .chat-mode-row select { border:1px solid #ccd9d6; border-radius:7px; padding:3px 6px; background:#fff; color:var(--ink); font-size:.78rem; }
 @media (max-width:780px) { .chat-panel { padding:0; } .chat-panel .chat-history { height:60vh; padding:14px; } .chat-row { max-width:88%; } .chat-topbar { padding:13px 15px; } .chat-hint { display:none; } }
+/* 隱藏內心：偷看（2026-11-22 v0.1.6） */
+.chat-peek { display:grid; gap:4px; margin:3px 4px 0; }
+.chat-under { display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+.peek-button { border:0; background:transparent; color:var(--muted); font-size:.76rem; padding:2px 4px; text-decoration:underline dotted; }
+.peek-button:hover { color:var(--accent-dark); }
+.chat-under .chat-confirm-actions { margin:0; }
+.small-button { padding:5px 13px; font-size:.82rem; }
+.chat-peek-body { display:grid; gap:5px; padding:9px 11px; border-radius:10px; background:#eef2f6; color:#4d5b66; font-size:.82rem; line-height:1.55; }
+.chat-peek-body p { margin:0; white-space:pre-wrap; }
+.chat-inner { font-style:italic; color:#3e4c58; }
+.chat-peek-body .memory-candidate { font-size:.82rem; }
+.observer-note { color:var(--muted); font-size:.78rem; }
+.observer-inner { display:grid; gap:10px; max-height:460px; overflow:auto; }
+.observer-thought { display:grid; gap:4px; padding:11px 13px; border-left:3px solid #b9c4d6; background:#f8f9fc; }
+.observer-thought small { color:var(--muted); font-size:.74rem; }
+.observer-thought p { margin:0; line-height:1.55; white-space:pre-wrap; font-size:.87rem; }
+.thought-said { color:var(--muted); }
+.thought-inner { color:var(--ink); font-weight:600; }
+.thought-mood { color:var(--muted); font-size:.82rem !important; }
+.manual-fallback { color:var(--muted); font-size:.8rem; }
+.manual-fallback summary { cursor:pointer; }
+.manual-fallback textarea { margin-top:8px; }
+.manual-fallback .chat-actions { margin-top:8px; }
