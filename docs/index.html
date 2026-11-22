@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, interactive-widget=resizes-content" />
     <title>情緒模擬器｜角色檔案</title>
-    <link rel="stylesheet" href="styles.css?v=0.1.32" />
+    <link rel="stylesheet" href="styles.css?v=0.1.33" />
     <script>
       // 先套上深淺色，免得打開時先閃一下白色。預設深色。
       try { const s = JSON.parse(localStorage.getItem("emocara:settings") || "{}"); document.documentElement.dataset.theme = s.theme === "light" ? "light" : "dark"; }
@@ -29,7 +29,7 @@
   <body>
     <div class="app-shell">
       <aside class="sidebar">
-        <div class="brand"><span class="spark">✦</span><div><strong>情緒模擬器</strong><small>角色檔案 v0.1.32</small></div></div>
+        <div class="brand"><span class="spark">✦</span><div><strong>情緒模擬器</strong><small>角色檔案 v0.1.33</small></div></div>
         <button id="new-character" class="primary wide">＋ 新增角色</button>
         <label class="import-button wide">⇧ 匯入角色<input id="import-file" type="file" accept="application/json,.json,text/plain,.txt" /></label>
         <button id="card-open" class="secondary wide settings-button" type="button">▤ 角卡</button>
@@ -147,9 +147,8 @@
           </section>
           <section id="panel-observer" class="panel tab-panel" hidden>
             <div class="section-heading"><div><h2>觀察者</h2><p>僅在你主動開啟此頁時顯示；不會在聊天中自動曝光角色的內在資料。</p></div><span class="observer-badge">只讀</span></div>
-            <section class="observer-section"><div class="observer-title"><h3>他現在</h3><span id="observer-now-time" class="observer-note"></span></div><div id="observer-now" class="observer-now"></div></section>
+            <section class="observer-section"><div class="observer-title"><h3>他對你的感覺</h3><span id="observer-now-time" class="observer-note"></span></div><div id="observer-now" class="observer-now"></div></section>
             <section class="observer-section"><div class="observer-title"><h3>他記得的近期經過</h3><span class="observer-note">AI 每句順便更新，最多 500 字</span></div><p id="observer-summary" class="observer-summary"></p></section>
-            <section class="observer-section"><div class="observer-title"><h3>內心時間線</h3><span class="observer-note">最近 30 句，新的在上面</span></div><div id="observer-inner" class="observer-inner"></div></section>
             <section class="observer-section"><div class="observer-title"><h3>已確認記憶</h3><span id="observer-memory-count" class="badge">0</span><button id="memory-cleanup" class="primary" type="button">✦ 請 AI 整理記憶</button></div><div id="observer-memories" class="observer-memories"></div></section>
             <details class="advanced observer-numbers"><summary>數字（心理數值、關係），平常不用看</summary>
               <section class="observer-section"><h3>目前心理狀態</h3><div id="observer-state" class="observer-metrics"></div></section>
@@ -207,9 +206,9 @@
       <label class="field">手機按「放大」時<select name="phone_zoom"><option value="fullscreen">真的全螢幕（連網址列都藏起來）</option><option value="page">只在網頁裡放大</option></select></label>
       <p class="muted">只對手機、平板有用，電腦一律是網頁裡放大。iPhone 的瀏覽器不讓網頁進全螢幕，在 iPhone 上一律是網頁裡放大。</p>
       <div class="dialog-actions"><button value="cancel" class="secondary">取消</button><button value="default" class="primary">儲存</button></div></form></dialog>
-    <script src="core.js?v=0.1.32"></script>
-    <script src="store.js?v=0.1.32"></script>
-    <script src="ai.js?v=0.1.32"></script>
-    <script src="app.js?v=0.1.32"></script>
+    <script src="core.js?v=0.1.33"></script>
+    <script src="store.js?v=0.1.33"></script>
+    <script src="ai.js?v=0.1.33"></script>
+    <script src="app.js?v=0.1.33"></script>
   </body>
 </html>

@@ -429,7 +429,7 @@ test("對你的感覺：送給 AI 的是最近那份，跨聊天視窗也算", (
   assert.equal(Core.latestFeeling(turns), "有點防備");
   assert.equal(Core.latestFeeling([]), null);
   const prompt = buildChatPrompt(normalize(newCharacter("羅爾")), [], "嗨", { feeling: "有點防備" });
-  assert.match(prompt, /"feeling_toward_user":"有點防備"/); assert.match(prompt, /"mood_now"/);
+  assert.match(prompt, /"feeling_toward_user":"有點防備"/); assert.doesNotMatch(prompt, /"mood_now"/);
 });
 
 // ---------- 角卡 ----------

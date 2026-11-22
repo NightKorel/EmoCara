@@ -728,7 +728,6 @@ ${manual ? `回覆的第一行只寫「${SPOILER_LINE}」這一句，接著把 J
   "scene": "鏡頭看得到的描述（樣貌、動作、場景、表情）",` : ""}
   "inner_thought": "角色心裡想、但沒有說出口的話",
   "recent_summary": "用角色的角度寫：他記得的最近經過",
-  "mood_now": "他現在的心情",
   "feeling_toward_user": "他現在對使用者的感覺",
   "state_proposal": null 或 {
     "summary": "簡短說明",
@@ -759,7 +758,7 @@ scene 只寫這一句新出現或改變的東西。recent_turns 裡的 scene 是
 recent_summary 是角色用自己的角度記得的最近經過（可以帶著感受和誤會），${MAX_SUMMARY_LENGTH} 字以內。
 把輸入資料的 recent_summary（或 previous_chat_summary：上一段聊天結束時的經過）和這次對話合起來更新；
 recent_turns 只留最近幾句，快看不到的重要內容要濃縮進來。長期重要的事另外用 memory_candidates 提出。
-mood_now 和 feeling_toward_user 各寫一兩句、100 字以內，用旁觀者的角度寫，可以寫出他自己沒察覺的感受。
+feeling_toward_user 寫一兩句、100 字以內，用旁觀者的角度寫，可以寫出他自己沒察覺的感受。
 輸入資料的 feeling_toward_user 是他上一次對使用者的感覺：從那裡慢慢變化，除非這次真的發生了大事，不要突然翻轉。
 state_proposal 只在這次對話確實讓心理數值有變化時提出；否則填 null。
 memory_candidates 最多三筆，只記本次對話明確出現、有長期意義的事；沒有就回傳 []。

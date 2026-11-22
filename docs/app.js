@@ -295,30 +295,11 @@ function renderObserver() {
   const carried = !summary && !viewingOldChat() ? Core.summaryForPrompt(current, allTurns) : null;
   $("#observer-summary").textContent = summary || (carried ? `（這段聊天還沒有自己的摘要，他帶著上一段聊天結束時記得的經過）\n${carried.text}` : "還沒有摘要。聊幾句之後，AI 會開始寫他記得的最近經過。");
   $("#observer-summary").classList.toggle("observer-empty", !summary);
-  // 他現在：最新的心情和對你的感覺（用文字）。
-  const latest = [...allTurns].reverse().find((turn) => turn.mood_now || turn.feeling_toward_user);
+  // 他對你的感覺：最新那份（會送回給 AI）。心情和內心時間線 2026-11-22 依納可拿掉（跟偷看、聊天重複）。
+  const feeling = Core.latestFeeling(allTurns), latest = [...allTurns].reverse().find((turn) => turn.feeling_toward_user);
   const now = $("#observer-now"); now.innerHTML = "";
-  const feeling = Core.latestFeeling(allTurns);
-  if (!latest && !feeling) now.append(el("p", "observer-empty", "還沒有紀錄。聊幾句之後，這裡會寫他現在的心情，和他對你的感覺。"));
-  else {
-    if (latest?.mood_now) now.append(el("p", "now-line", `心情：${latest.mood_now}`));
-    if (feeling) now.append(el("p", "now-line", `對你的感覺：${feeling}`));
-  }
+  now.append(feeling ? el("p", "now-line", feeling) : el("p", "observer-empty", "還沒有紀錄。聊幾句之後，這裡會寫他對你的感覺。"));
   $("#observer-now-time").textContent = latest ? `${formatTime(latest.created_at)} 那句之後` : "";
-  const timeline = $("#observer-inner"); timeline.innerHTML = "";
-  if (!chatTurns.length) timeline.append(el("p", "observer-empty", "還沒有對話。"));
-  [...chatTurns].reverse().forEach((turn) => {
-    const card = el("article", "observer-thought");
-    card.append(el("small", "", formatTime(turn.created_at)));
-    card.append(el("p", "thought-said", `你：${turn.user_message}`));
-    if (turn.scene) card.append(el("p", "thought-scene", `畫面：${turn.scene}`));
-    card.append(el("p", "thought-said", `他說：${turn.character_reply}`));
-    card.append(el("p", "thought-inner", turn.inner_thought === undefined ? "（這句沒有記錄內心）" : (turn.inner_thought ? `心裡：${turn.inner_thought}` : "心裡：沒有特別的想法")));
-    const mood = turn.mood_now || turn.state_proposal?.summary;
-    if (mood) card.append(el("p", "thought-mood", `心情：${mood}`));
-    if (turn.feeling_toward_user) card.append(el("p", "thought-mood", `對你的感覺：${turn.feeling_toward_user}`));
-    timeline.append(card);
-  });
   const state = $("#observer-state"); state.innerHTML = "";
   const metrics = [["情緒效價", current.state.mood?.valence], ["喚起程度", current.state.mood?.arousal], ["安全感", current.state.psychological?.security], ["焦慮", current.state.psychological?.anxiety], ["孤獨感", current.state.psychological?.loneliness], ["情緒穩定度", current.state.psychological?.emotional_stability]];
   metrics.forEach(([label, value]) => { const card = document.createElement("div"); card.className = "observer-metric"; const title = document.createElement("small"); title.textContent = label; const number = document.createElement("strong"); number.textContent = value ?? "—"; card.append(title, number); state.append(card); });
