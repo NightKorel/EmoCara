@@ -468,18 +468,23 @@ async function generateChat(event) {
     } catch (error) { waitingReply = false; giveBackMessage(); pendingMessage = null; renderChat(); throw error; }
   } catch (error) { toast(error.message, true); }
 }
-function showPasteHelp(message) { const help = $("#paste-help"); help.textContent = message; help.hidden = false; $(".manual-fallback").open = true; }
+function showPasteHelp(message, openFallback = true) { const help = $("#paste-help"); help.textContent = message; help.hidden = false; if (openFallback) $(".manual-fallback").open = true; }
 // 按一下就讀剪貼簿（瀏覽器規定一定要按，網頁不能自己偷讀）。讀不到就打開下面的框框讓你自己貼。
 async function pasteChatResponse() {
   if (!pendingMessage) { toast("先在下面打字送出。", true); return; }
   let text = ""; const help = $("#paste-help"); help.hidden = true;
   if (!navigator.clipboard?.readText) { showPasteHelp("這個瀏覽器不支援一鍵貼上（可能版本太舊，或網頁不是從 https 網址打開）。請點下面「改成自己貼」。"); return; }
+  // 按下去馬上給反應；瀏覽器可能在等你按「允許」或「貼上」，太久沒回應就提示去哪裡看。
+  const button = $("#paste-chat-response"); button.disabled = true; button.textContent = "讀取剪貼簿中……";
+  const slow = setTimeout(() => { showPasteHelp("瀏覽器在等你回答：看看網址列附近有沒有跳出「允許讀取剪貼簿」的詢問，或按鈕旁邊有沒有一個小小的「貼上」，點它就好。都沒看到的話，請點下面「改成自己貼」。", false); button.disabled = false; button.textContent = "從剪貼簿貼上"; }, 2500);
   try { text = await navigator.clipboard.readText(); }
   catch {
+    clearTimeout(slow); button.disabled = false; button.textContent = "從剪貼簿貼上";
     let denied = false; try { denied = (await navigator.permissions?.query({ name: "clipboard-read" }))?.state === "denied"; } catch { /* 有些瀏覽器不能查 */ }
     showPasteHelp(denied ? "剪貼簿被封鎖了（可能之前跳詢問時按到「封鎖」）。解法：點網址列最左邊的小圖示 →「網站設定」或「權限」→ 剪貼簿改成「允許」，重新整理再按一次。這次先點下面「改成自己貼」。" : "瀏覽器沒讓網頁讀剪貼簿。如果有跳出詢問，請按「允許」再按一次；沒跳的話，請點下面「改成自己貼」。");
     return;
   }
+  clearTimeout(slow); button.disabled = false; button.textContent = "從剪貼簿貼上"; help.hidden = true;
   if (!text.trim()) { toast("剪貼簿是空的，先去複製 AI 的回覆。", true); return; }
   $("#manual-chat-response").value = text; parseManualChatResponse();
 }
