@@ -30,11 +30,10 @@
 
 ## 🚧 目前專案狀態（2026-11-22）
 
-- 程式是 ChatGPT 幫納可做的第一版（v0.1.0），用 Python（FastAPI）＋ SQLite。
-- 2026-11-22 放上 GitHub：https://github.com/NightKorel/EmoCara （私人 repo）。
-- 目前只在納可自己的電腦上跑（雙擊 `start.bat`），不放網路。
-- 2026-11-22 納可決定改成網頁版（GitHub Pages），正在改寫中，見 `納可要求清單.txt` 最上面。
-- 接手時先讀：`納可要求清單.txt`（最上面是下一步）→ `更新日誌.txt` 最上面幾筆 → `README.md`、`ROADMAP.md`（GPT 寫的原始說明）。
+- 第一版是 ChatGPT 幫納可做的電腦版（v0.1.0，Python＋SQLite），已搬進 `垃圾桶/2026-11-22_電腦版Python/`。
+- 2026-11-22 放上 GitHub：https://github.com/NightKorel/EmoCara 。
+- 2026-11-22 起改成純網頁版（v0.1.3），在 `docs/`，用 GitHub Pages 發佈，手機和電腦打開網址就能玩。repo 要改成公開才能開 Pages（見下面「角色資料不進 GitHub」）。
+- 接手時先讀：`納可要求清單.txt`（最上面是下一步）→ `更新日誌.txt` 最上面幾筆 → `README.md`、`ROADMAP.md`（ROADMAP 是 GPT 寫的原始規劃，裡面講的 Python 是舊電腦版）。
 
 ---
 
@@ -85,7 +84,7 @@
 「更新」＝任何一次改到程式或檔案的工作。做完主要工作後：
 
 0. **版本號＋1**（有改到程式或網頁時）：只加最後一位（0.1.0 → 0.1.1 → ……），納可明確說「大更新」才動前面的數字。更新日誌每筆標上版本號。
-   - 版本號寫在 `app/main.py`（`version="0.1.0"`）和 `static/index.html`（畫面上的「角色檔案 v0.1」），兩邊要一起改。
+   - 版本號寫在 `docs/index.html`（畫面左上角的「角色檔案 v0.1.3」）。
 1. **寫更新日誌**（`更新日誌.txt`）：最新的寫在最上面。每筆含日期＋版本號＋這次做了什麼（白話）。
 2. **更新要求清單**（`納可要求清單.txt`）：納可每個指令先登記成一條；還沒做完的放最上面，做完的移到最下面並標 `✗`。
 3. **存到 GitHub**：每完成一個「不會壞」的段落就 commit、push 到 main。只要是穩定版就先推，不要拖著。
@@ -128,8 +127,13 @@
 
 ## 專案技術備註
 
-- 後端：Python（FastAPI），程式在 `app/`。前端：純 HTML／CSS／JavaScript，在 `static/`。
-- 啟動：雙擊 `start.bat`，會自動建 `.venv`、裝套件、開 `http://127.0.0.1:8000`。
-- AI：在 `.env` 設 `EMOSIM_MODEL_PROVIDER`（`disabled`、`ollama` 或 `gemini`）。也可以不接 API，用網頁上的「手動複製貼上」模式。
-- 核心設計：AI 只能「提案」，Python 驗證過、納可確認後才寫進資料庫。不要改成讓 AI 直接寫資料。
-- 測試在 `tests/`，用 `.venv\Scripts\python.exe -m pytest` 跑。
+- 純網頁，沒有後端。檔案都在 `docs/`：
+  - `core.js`：資料整理、驗證、提示詞（從舊 Python 的 app/ 改寫）
+  - `store.js`：存取角色和對話（瀏覽器 localStorage）。以後要做同步，只換這個檔案，函式名稱保持一樣。
+  - `ai.js`：直接從瀏覽器呼叫 Gemini，鑰匙存在瀏覽器的「設定」裡。
+  - `app.js`：畫面。`index.html`、`styles.css`。
+- GitHub Pages 設定：main 分支的 `/docs` 資料夾。`docs/.nojekyll` 不要刪。
+- 本機試跑：在 `docs/` 開一個簡單的網頁伺服器（例：`python -m http.server`），或直接雙擊 `docs/index.html`。
+- 核心設計：AI 只能「提案」，`core.js` 驗證過、納可按確認後才存進去。不要改成讓 AI 直接寫資料。
+- 測試在 `tests/`，用 `node --test tests/*.test.js` 跑。
+- 匯出的檔案＝角色 JSON 加上 `chat_turns`（對話紀錄）。舊電腦版匯出的 JSON 也能匯入。

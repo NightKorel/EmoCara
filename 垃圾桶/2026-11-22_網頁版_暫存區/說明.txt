@@ -1,0 +1,12 @@
+2026-11-22 網頁版（GitHub Pages）
+要做：把 Python 那半（資料整理、驗證、提示詞、存檔）改寫成純網頁，角色存在瀏覽器裡。
+檔案：
+- core.js   資料整理、驗證、提示詞（原本 app/schemas.py、interactions.py、state_proposals.py、relationships.py、model_interface.py）
+- store.js  存取角色和對話（瀏覽器 localStorage）。以後要改成同步，只換這個檔案。
+- ai.js     呼叫 Gemini（鑰匙只存在瀏覽器）
+- app.js    畫面
+- tests/    用 node --test tests/ 跑
+做完測過後搬到 docs/（GitHub Pages 從 main 的 docs/ 資料夾發佈）。
+
+2026-11-22 已做完並搬到 docs/（v0.1.3），這個資料夾照規則從暫存區移進垃圾桶。
+裡面的檔案就是 v0.1.3 網頁版的複本（測試已改放到專案根目錄的 tests/），平常用不到。

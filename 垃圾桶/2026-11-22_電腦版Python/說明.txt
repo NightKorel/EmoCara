@@ -1,0 +1,12 @@
+2026-11-22 搬進來的原因：
+納可要手機、電腦都能玩，而且不要每次下載，所以遊戲改成純網頁（docs/，放 GitHub Pages）。
+這裡是原本的電腦版（ChatGPT 做的 v0.1.0，加上 Claude 改到 v0.1.2）：Python（FastAPI）＋ SQLite，雙擊 start.bat 開。
+- app/       Python 後端（資料整理、驗證、提示詞、存檔）。網頁版的 docs/core.js 就是照這裡改寫的。
+- static/    v0.1.2 的網頁畫面
+- tests/     Python 測試（pytest）
+- README.md  GPT 寫的原始說明（講的是電腦版）
+- start.bat、requirements.txt、.env.example、pytest.ini
+以後怎麼用：
+- 想再跑電腦版：把這些檔案搬回專案根目錄，雙擊 start.bat。舊資料庫在 垃圾桶/2026-11-22_舊角色資料庫/。
+- 電腦版匯出的角色 JSON，網頁版可以直接匯入。
+- 如果以後想用 Ollama（本機模型），電腦版的 app/model_interface.py 有現成的寫法；網頁版放在網路上連不到你電腦上的 Ollama，所以沒搬。
