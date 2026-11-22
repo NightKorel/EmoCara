@@ -378,7 +378,7 @@ function tapMyBubble(turn, allTurns) {
   openRewind = openRewind === turn.id ? null : turn.id;
   const history = $("#chat-history"), top = history.scrollTop; scrollChatToEnd = false; renderChat(); history.scrollTop = top;
 }
-// quiet：最新那句的「取消」，只退一句又退得乾淨時不跳確認框。
+// quiet：最新那句的「取消」，只退一句時跳短一點的警告。
 function rewindFrom(turnId, { quiet = false } = {}) {
   try {
     const result = Core.rewind(current, Store.allTurns(current.character_id), turnId);
@@ -389,12 +389,13 @@ function rewindFrom(turnId, { quiet = false } = {}) {
     lines.push("・你這句話會放回輸入框，可以改一改重講。");
     if (pendingMessage) lines.push("・還在等回覆的那句也會一起丟掉。");
     lines.push("", "確定要重來嗎？");
-    const skipConfirm = quiet && result.kind === "full" && result.removed === 1 && !pendingMessage;
-    if (!skipConfirm && !confirm(lines.join("\n"))) return;
+    const short = quiet && result.kind === "full" && result.removed === 1 && !pendingMessage;
+    const warning = short ? "取消這句？\n\n・他這句回覆會消失，找不回來。\n・他的心情、記住的事、心裡話、摘要，會退回你講這句之前。\n・你的話會放回輸入框。\n\n確定要取消嗎？" : lines.join("\n");
+    if (!confirm(warning)) return;
     current = Store.saveTurnsAndCharacter(Core.normalize(result.character), result.turns);
     resetPendingChat(); $("#manual-chat-prompt").value = ""; $("#manual-chat-response").value = "";
     $("#chat-message").value = result.message; growComposer();
-    refreshChatTurns(); refreshList(); render(); toast(skipConfirm ? "這句取消了，你的話放回輸入框" : "已經回到那句之前");
+    refreshChatTurns(); refreshList(); render(); toast(short ? "這句取消了，你的話放回輸入框" : "已經回到那句之前");
   } catch (error) { toast(error.message, true); }
 }
 
