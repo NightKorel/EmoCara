@@ -248,11 +248,11 @@ function importCardFromDialog() {
 }
 
 // ---------- 設定（Gemini 鑰匙只存在這台裝置） ----------
-function openSettings() { const s = Store.getSettings(), form = $("#settings-form"); form.gemini_api_key.value = s.gemini_api_key || ""; form.gemini_model.value = s.gemini_model || ""; form.phone_zoom.value = s.phone_zoom === "page" ? "page" : "fullscreen"; $("#settings-dialog").showModal(); }
+function openSettings() { const s = Store.getSettings(), form = $("#settings-form"); form.gemini_api_key.value = s.gemini_api_key || ""; form.gemini_model.value = s.gemini_model || ""; form.phone_zoom.value = s.phone_zoom === "page" ? "page" : "fullscreen"; form.auto_copy.checked = s.auto_copy !== false; $("#settings-dialog").showModal(); }
 function saveSettings(event) {
   if (event.submitter?.value === "cancel") return;
   const form = $("#settings-form");
-  try { Store.saveSettings({ ...Store.getSettings(), gemini_api_key: form.gemini_api_key.value.trim(), gemini_model: form.gemini_model.value.trim(), phone_zoom: form.phone_zoom.value }); renderChat(); toast("設定已存在這台裝置"); }
+  try { Store.saveSettings({ ...Store.getSettings(), gemini_api_key: form.gemini_api_key.value.trim(), gemini_model: form.gemini_model.value.trim(), phone_zoom: form.phone_zoom.value, auto_copy: form.auto_copy.checked }); renderChat(); toast("設定已存在這台裝置"); }
   catch (error) { toast(error.message, true); }
 }
 
@@ -385,6 +385,7 @@ function renderChat() {
   scrollChatToEnd = true;
   const manual = $("#chat-mode").value === "manual", ready = Boolean(geminiSettings().apiKey);
   $("#manual-chat-workflow").hidden = old || !(manual && pendingMessage && !pendingChat);
+  $("#manual-step-1").textContent = promptAutoCopied ? "1. 提示詞已經自動複製好了，貼給網頁上的 AI（要再複製一次就按下面的按鈕）。" : "1. 按「複製提示詞」，貼給網頁上的 AI。";
   $("#chat-form").hidden = old; $(".chat-mode-row").hidden = old; $("#old-chat-banner").hidden = !old;
   $("#real-time-toggle").checked = current.chat_settings?.real_time === true;
   $("#proposal-toggle").checked = current.chat_settings?.proposals !== false;
@@ -399,11 +400,19 @@ function chatPrompt(userMessage, manual = false) {
   return Core.buildChatPrompt(current, Core.turnsInChat(all, Core.currentChatId(current)).slice(-12), userMessage, { summary: Core.summaryForPrompt(current, all), manual, feeling: Core.latestFeeling(all) });
 }
 // Gemini 失敗時：剛剛那句直接換成手動流程，不用重打。
-function fillManualPrompt() { $("#paste-help").hidden = true; $("#manual-chat-prompt").value = chatPrompt(pendingMessage, true); $("#manual-chat-response").value = ""; }
+// 手動模式：送出時自動複製提示詞（設定可以關掉，預設開）。瀏覽器不讓複製的話就安靜放著，照舊按「複製提示詞」。
+function autoCopyOn() { try { return Store.getSettings().auto_copy !== false; } catch { return true; } }
+let promptAutoCopied = false;
+function autoCopyPrompt(prompt) {
+  promptAutoCopied = false;
+  if (!autoCopyOn() || !navigator.clipboard?.writeText) return;
+  navigator.clipboard.writeText(prompt).then(() => { promptAutoCopied = true; renderChat(); toast("提示詞已經自動複製，貼給網頁上的 AI 就好"); }).catch(() => {});
+}
+function fillManualPrompt() { $("#paste-help").hidden = true; const prompt = chatPrompt(pendingMessage, true); $("#manual-chat-prompt").value = prompt; $("#manual-chat-response").value = ""; autoCopyPrompt(prompt); }
 function switchToManual() {
   if (!pendingMessage) return;
   $("#chat-mode").value = "manual"; geminiFailure = null; fillManualPrompt(); renderChat();
-  toast("換成手動了：按「複製提示詞」，貼給網頁上的 AI。");
+  if (!autoCopyOn()) toast("換成手動了：按「複製提示詞」，貼給網頁上的 AI。");
 }
 function changeChatMode() {
   if ($("#chat-mode").value === "manual" && pendingMessage && !pendingChat && !waitingReply) { geminiFailure = null; fillManualPrompt(); }
@@ -514,7 +523,7 @@ async function generateChat(event) {
     if (!manual && !settings.apiKey) throw new Error("還沒填 Gemini 鑰匙。請按左邊的「設定」填好，或改用手動複製貼上。");
     const prompt = chatPrompt(userMessage, manual);
     pendingMessage = userMessage; $("#chat-message").value = ""; growComposer();
-    if (manual) { $("#paste-help").hidden = true; $("#manual-chat-prompt").value = prompt; $("#manual-chat-response").value = ""; renderChat(); return; }
+    if (manual) { $("#paste-help").hidden = true; $("#manual-chat-prompt").value = prompt; $("#manual-chat-response").value = ""; autoCopyPrompt(prompt); renderChat(); return; }
     waitingReply = true; waitingNote = ""; geminiFailure = null; renderChat();
     try {
       const text = await AI.askGeminiWithRetry(prompt, settings, { onRetry: (attempt) => { waitingNote = `Gemini 塞車中，等一下再試（第 ${attempt} 次）……`; renderChat(); } });
