@@ -702,6 +702,14 @@ document.addEventListener("fullscreenchange", () => {
   // 用返回手勢退出全螢幕時，聊天室也一起縮回來。
   if (!document.fullscreenElement && zoomFullscreen) { zoomFullscreen = false; if (document.body.classList.contains("chat-zoomed")) setChatZoom(false); }
 });
+// 手機鍵盤彈出來時，畫面實際看得到的高度會變小；放大的聊天室跟著縮，輸入框才不會被鍵盤蓋住。
+function syncVisibleArea() {
+  const view = window.visualViewport; if (!view) return;
+  const root = document.documentElement.style;
+  root.setProperty("--app-height", `${Math.round(view.height)}px`); root.setProperty("--app-top", `${Math.round(view.offsetTop)}px`);
+  if (document.body.classList.contains("chat-zoomed") && document.activeElement === $("#chat-message")) { const history = $("#chat-history"); history.scrollTop = history.scrollHeight; }
+}
+if (window.visualViewport) { window.visualViewport.addEventListener("resize", syncVisibleArea); window.visualViewport.addEventListener("scroll", syncVisibleArea); syncVisibleArea(); }
 function setChatZoom(on) {
   if (on && !document.body.classList.contains("chat-zoomed") && wantsFullscreen() && !document.fullscreenElement) {
     document.documentElement.requestFullscreen().then(() => { zoomFullscreen = true; }).catch(() => { /* 進不了全螢幕就只在網頁裡放大 */ });

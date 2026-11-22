@@ -49,6 +49,8 @@ dialog { border:0; padding:0; border-radius:13px; box-shadow:0 18px 60px rgba(20
 /* 聊天室放大：鋪滿整個瀏覽器畫面（網頁裡的放大，不是真的全螢幕） */
 body.chat-zoomed { overflow:hidden; }
 body.chat-zoomed #panel-chat { position:fixed; inset:0; z-index:40; border:0; border-radius:0; box-shadow:none; height:100vh; height:100dvh; }
+/* 手機鍵盤彈出來時，聊天室縮到鍵盤上面剩下的高度（--app-height、--app-top 由 app.js 依實際看得到的畫面算） */
+body.chat-zoomed #panel-chat { top:var(--app-top, 0px); bottom:auto; height:var(--app-height, 100dvh); }
 body.chat-zoomed .chat-panel .chat-history { flex:1 1 auto; height:auto; min-height:0; }
 /* 放大時內容置中一欄，寬度用標題列的滑桿調（記在這台裝置） */
 body.chat-zoomed #panel-chat { background:var(--canvas); }
