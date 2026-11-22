@@ -5,14 +5,20 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>情緒模擬器｜角色檔案</title>
     <link rel="stylesheet" href="styles.css" />
+    <script>
+      // 先套上深淺色，免得打開時先閃一下白色。預設深色。
+      try { const s = JSON.parse(localStorage.getItem("emocara:settings") || "{}"); document.documentElement.dataset.theme = s.theme === "light" ? "light" : "dark"; }
+      catch { document.documentElement.dataset.theme = "dark"; }
+    </script>
   </head>
   <body>
     <div class="app-shell">
       <aside class="sidebar">
-        <div class="brand"><span class="spark">✦</span><div><strong>情緒模擬器</strong><small>角色檔案 v0.1.13</small></div></div>
+        <div class="brand"><span class="spark">✦</span><div><strong>情緒模擬器</strong><small>角色檔案 v0.1.14</small></div></div>
         <button id="new-character" class="primary wide">＋ 新增角色</button>
         <label class="import-button wide">⇧ 匯入角色<input id="import-file" type="file" accept="application/json,.json" /></label>
         <nav><p class="nav-label">我的角色</p><div id="character-list" class="character-list"></div></nav>
+        <button id="theme-toggle" class="secondary wide settings-button" type="button">☀ 換成淺色</button>
         <button id="open-settings" class="secondary wide settings-button">⚙ 設定</button>
         <p class="sidebar-note">角色存在這台裝置的瀏覽器裡，不會上傳。要換裝置玩或備份，請用角色頁右上角的「匯出備份」，到另一台按「匯入角色」。</p>
       </aside>
@@ -37,6 +43,7 @@
             <div class="chat-tools">
               <label class="time-switch" title="開著：他知道現在幾點、隔了多久。關著：時間不流動。"><input type="checkbox" id="real-time-toggle"> 現實時間</label>
               <label class="time-switch" title="開著：聊天裡發生的事改變了他，AI 會提議改他的設定，你同意才會改。"><input type="checkbox" id="proposal-toggle"> 設定提議</label>
+              <label class="time-switch" title="開著：他回話時會多一段鏡頭看得到的描述（樣貌、動作、場景、表情）。"><input type="checkbox" id="video-toggle"> 視訊模式</label>
               <select id="chat-select" aria-label="切換聊天視窗" hidden></select>
               <button id="new-chat" class="text-button" type="button">開新聊天</button>
             </div>

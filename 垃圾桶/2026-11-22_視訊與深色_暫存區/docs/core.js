@@ -5,11 +5,12 @@
   "use strict";
 
   const SCHEMA_VERSION = "0.1";
-  const CHAT_CONTRACT_VERSION = "chat_turn/v0.4";
+  const CHAT_CONTRACT_VERSION = "chat_turn/v0.5";
   const MAX_MESSAGE_LENGTH = 4000;
   const MAX_REPLY_LENGTH = 6000;
   const MAX_INNER_LENGTH = 2000; // 心裡沒說出口的話，最多幾個字
   const MAX_SUMMARY_LENGTH = 500; // 近期摘要（他記得的最近經過），最多幾個字
+  const MAX_SCENE_LENGTH = 300; // 視訊模式：鏡頭看得到的描述，最多幾個字
   const MAX_MEMORY_CANDIDATES = 3;
   const MAX_MEMORY_TEXT_LENGTH = 1000;
   // 設定提議：AI 每句最多提幾筆、每筆多長；同一欄最多留幾筆舊的；待處理幾筆以上才提醒。
@@ -188,8 +189,8 @@
     result.relationships = Array.isArray(result.relationships) ? result.relationships : [];
     // 聊天設定：real_time＝現實時間開關；time_since＝打開時選「剛剛」的那一刻（之前的對話都算發生在這一刻）。
     const chatSettings = objectOr(result.chat_settings, {});
-    // proposals＝設定提議開關，沒寫過的角色預設開著。
-    result.chat_settings = { real_time: chatSettings.real_time === true, time_since: typeof chatSettings.time_since === "string" ? chatSettings.time_since : null, proposals: chatSettings.proposals !== false };
+    // proposals＝設定提議開關；video＝視訊模式開關。沒寫過的角色都預設開著。
+    result.chat_settings = { real_time: chatSettings.real_time === true, time_since: typeof chatSettings.time_since === "string" ? chatSettings.time_since : null, proposals: chatSettings.proposals !== false, video: chatSettings.video !== false };
     // 還沒處理的設定提議（AI 提的，使用者同意才會改進設定）。
     result.pending_proposals = Array.isArray(result.pending_proposals)
       ? result.pending_proposals.filter((item) => isObject(item) && typeof item.proposal_id === "string" && typeof item.target === "string" && typeof item.new_text === "string")
@@ -314,19 +315,23 @@
 
   function validateChatResponse(response) {
     if (!isObject(response)) throw new Error("互動回覆必須是 JSON 物件。");
-    const keys = Object.keys(response), allowedKeys = ["reply", "state_proposal", "memory_candidates", "inner_thought", "recent_summary", "profile_proposals"];
-    if (!("reply" in response) || !("state_proposal" in response) || keys.some((key) => !allowedKeys.includes(key))) throw new Error("互動回覆只能包含 reply、state_proposal、memory_candidates、inner_thought、recent_summary 與 profile_proposals。");
+    const keys = Object.keys(response), allowedKeys = ["reply", "state_proposal", "memory_candidates", "inner_thought", "recent_summary", "profile_proposals", "scene"];
+    if (!("reply" in response) || !("state_proposal" in response) || keys.some((key) => !allowedKeys.includes(key))) throw new Error("互動回覆只能包含 reply、state_proposal、memory_candidates、inner_thought、recent_summary、profile_proposals 與 scene。");
     const inner = response.inner_thought ?? "";
     if (typeof inner !== "string" || inner.trim().length > MAX_INNER_LENGTH) throw new Error(`inner_thought 必須是 ${MAX_INNER_LENGTH} 個字元以內的文字。`);
     // 近期摘要：沒寫就是 null（沿用上一份）。
     const summary = response.recent_summary ?? null;
     if (summary !== null && (typeof summary !== "string" || summary.trim().length > MAX_SUMMARY_LENGTH)) throw new Error(`recent_summary 必須是 ${MAX_SUMMARY_LENGTH} 個字元以內的文字。`);
+    // 視訊模式的描述：沒寫就是 ""。
+    const scene = response.scene ?? "";
+    if (typeof scene !== "string" || scene.trim().length > MAX_SCENE_LENGTH) throw new Error(`scene 必須是 ${MAX_SCENE_LENGTH} 個字元以內的文字。`);
     const reply = response.reply;
     if (typeof reply !== "string" || !reply.trim() || reply.trim().length > MAX_REPLY_LENGTH) throw new Error(`reply 必須是 1 至 ${MAX_REPLY_LENGTH} 個字元的文字。`);
     const proposal = response.state_proposal;
     return {
       reply: reply.trim(),
       inner_thought: inner.trim(),
+      scene: scene.trim(),
       recent_summary: summary === null || !summary.trim() ? null : summary.trim(),
       state_proposal: proposal === null ? null : validateStateProposal(proposal),
       memory_candidates: validateMemoryCandidates(response.memory_candidates === undefined ? [] : response.memory_candidates),
@@ -563,6 +568,7 @@
     const settings = character.chat_settings || {};
     return (recentTurns || []).map((turn) => {
       const view = { user_message: turn.user_message, character_reply: turn.character_reply };
+      if (turn.scene) view.scene = turn.scene;
       if (turn.inner_thought !== undefined) view.inner_thought = turn.inner_thought;
       if (turn.state_proposal) view.state_proposal = turn.state_proposal;
       if (turn.memory_candidates?.length) view.memory_candidates = turn.memory_candidates;
@@ -577,7 +583,7 @@
   const SPOILER_LINE = "以下是給程式看的資料，含劇透，請直接按複製";
   function buildChatPrompt(character, recentTurns, userMessage, { now = timestamp(), summary = null, manual = false } = {}) {
     const realTime = character.chat_settings?.real_time === true;
-    const proposalsOn = character.chat_settings?.proposals !== false;
+    const proposalsOn = character.chat_settings?.proposals !== false, videoOn = character.chat_settings?.video !== false;
     const view = characterForPrompt(character);
     delete view.chats; delete view.chat_settings; delete view.pending_proposals;
     const data = { character: realTime ? view : withoutTimes(view) };
@@ -599,7 +605,8 @@ profile、modules、memories、relationships 或 metadata。${proposalsOn ? "\n�
 
 ${manual ? `回覆的第一行只寫「${SPOILER_LINE}」這一句，接著把 JSON 物件整個放在一個 \`\`\`json 程式碼框裡，程式碼框外面不要再寫任何字（使用者不想被劇透角色的心裡話）。JSON 格式必須是：` : "只回傳 JSON 物件，不要 Markdown 或額外文字。格式必須是："}
 {
-  "reply": "角色對使用者說的話",
+  "reply": "角色對使用者說的話",${videoOn ? `
+  "scene": "鏡頭看得到的描述（樣貌、動作、場景、表情）",` : ""}
   "inner_thought": "角色心裡想、但沒有說出口的話",
   "recent_summary": "用角色的角度寫：他記得的最近經過",
   "state_proposal": null 或 {
@@ -620,7 +627,11 @@ ${manual ? `回覆的第一行只寫「${SPOILER_LINE}」這一句，接著把 J
 }
 reply 只放角色真的說出口的話。角色心裡的想法、誤會、戒心、沒說出口的感受放在 inner_thought，
 使用者看不到這一欄，所以 reply 不必替它解釋；角色可以表面若無其事，心裡另有想法。沒有特別的想法就填 ""。
-recent_turns 裡每一回合的 inner_thought 是角色當時沒說出口的想法；請延續這些想法（例如還沒解開的誤會），
+${videoOn ? `這是視訊模式：使用者像在跟角色視訊，看得到他。scene 用小說的筆法、第三人稱，描寫角色說這句話時鏡頭拍得到的樣子：
+樣貌、動作、所在的場景、表情和微表情、小動作。通常一到三句，${MAX_SCENE_LENGTH} 字以內；沒什麼好寫的時候寫短短一句就好。
+scene 只寫看得到的，不寫角色心裡在想什麼（那些放 inner_thought）；但身體可以露出破綻，例如嘴上說沒事、手卻抓緊了袖口。
+scene 不要重複 reply 說的話。recent_turns 裡的 scene 是之前的畫面，請讓場景、穿著、手上的東西前後接得上。
+` : ""}recent_turns 裡每一回合的 inner_thought 是角色當時沒說出口的想法；請延續這些想法（例如還沒解開的誤會），
 除非角色自己決定說出來，否則不要在 reply 裡直接講出 inner_thought 的內容。
 recent_summary 是角色記得的最近經過，用角色自己的角度寫（可以帶著他的感受和誤會，不必是客觀紀錄），${MAX_SUMMARY_LENGTH} 字以內。
 請把輸入資料的 recent_summary（或 previous_chat_summary：上一段聊天結束時他記得的經過）和這次對話合在一起更新。
@@ -666,7 +677,7 @@ ${supplied}`;
     validateUserMessage, validateMemoryCandidates, validateMemoryCapacity, validateChatResponse, applyChatResponse,
     validateRelationship, characterForPrompt, buildChatPrompt, parseJsonObjectText, memoryKey,
     MAX_PROFILE_PROPOSALS, PROPOSAL_FIELDS, PROPOSAL_REMINDER, validateProfileProposals, addProposals, activeProposals, resolveProposal, newTurnId,
-    MAX_SUMMARY_LENGTH, chatSummary, summaryForPrompt, fittingMemories,
+    MAX_SCENE_LENGTH, MAX_SUMMARY_LENGTH, chatSummary, summaryForPrompt, fittingMemories,
     FIRST_CHAT_ID, REWIND_LIMIT, currentChatId, turnChatId, turnsInChat, startNewChat, freshCopy,
     snapshotOf, trimSnapshots, rewindKind, rewind, describeTime, withoutTimes, turnsForPrompt,
   };

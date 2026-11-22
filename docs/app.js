@@ -241,7 +241,9 @@ function renderObserver() {
   [...chatTurns].reverse().forEach((turn) => {
     const card = el("article", "observer-thought");
     card.append(el("small", "", formatTime(turn.created_at)));
-    card.append(el("p", "thought-said", `你：${turn.user_message}`), el("p", "thought-said", `他說：${turn.character_reply}`));
+    card.append(el("p", "thought-said", `你：${turn.user_message}`));
+    if (turn.scene) card.append(el("p", "thought-scene", `畫面：${turn.scene}`));
+    card.append(el("p", "thought-said", `他說：${turn.character_reply}`));
     card.append(el("p", "thought-inner", turn.inner_thought === undefined ? "（這句沒有記錄內心）" : (turn.inner_thought ? `心裡：${turn.inner_thought}` : "心裡：沒有特別的想法")));
     if (turn.state_proposal) card.append(el("p", "thought-mood", `心情：${turn.state_proposal.summary}`));
     timeline.append(card);
@@ -319,6 +321,7 @@ function renderChat() {
     if (openRewind === turn.id) { const again = el("button", "rewind-button", "↺ 從這句重來"); again.type = "button"; again.onclick = () => rewindFrom(turn.id); mine.append(again); }
     history.append(mine);
     const latest = !viewingOldChat() && !pendingMessage && turn === chatTurns[chatTurns.length - 1];
+    if (turn.scene) history.append(el("p", "chat-scene", turn.scene));
     const row = bubble("them", turn.character_reply, latest ? "latest" : "");
     // 他最新那句：跟你的泡泡一樣，點一下才出現「取消這句」。
     if (latest) {
@@ -346,6 +349,7 @@ function renderChat() {
   $("#chat-form").hidden = old; $(".chat-mode-row").hidden = old; $("#old-chat-banner").hidden = !old;
   $("#real-time-toggle").checked = current.chat_settings?.real_time === true;
   $("#proposal-toggle").checked = current.chat_settings?.proposals !== false;
+  $("#video-toggle").checked = current.chat_settings?.video !== false;
   renderChatSelect();
   $("#model-status").textContent = manual ? "手動模式：不連網" : (ready ? "自動模式：Gemini" : "還沒在「設定」填 Gemini 鑰匙");
   $("#model-status").classList.toggle("ready", manual || ready);
@@ -525,11 +529,12 @@ function saveReply(userMessage, rawResponse) {
     const { updated, response, selected } = Core.applyChatResponse(current, clean, kept);
     const chatId = Core.currentChatId(current), before = Core.snapshotOf(current), turnId = Core.newTurnId();
     // 設定提議開著才收；放進角色頁的待處理清單，同意了才會改設定。
+    const videoOn = current.chat_settings?.video !== false;
     const proposalsOn = current.chat_settings?.proposals !== false, waitingBefore = Core.activeProposals(current).length;
     const withProposals = proposalsOn ? Core.addProposals(updated, response.profile_proposals, turnId).updated : updated;
     // AI 這次沒寫摘要的話，沿用這段聊天上一份。
     const recentSummary = response.recent_summary || Core.chatSummary(Store.allTurns(current.character_id), chatId) || undefined;
-    current = Store.saveTurn(withProposals, { id: turnId, contract_version: Core.CHAT_CONTRACT_VERSION, chat_id: chatId, user_message: message, character_reply: response.reply, inner_thought: response.inner_thought, recent_summary: recentSummary, state_proposal: response.state_proposal, memory_candidates: selected, before });
+    current = Store.saveTurn(withProposals, { id: turnId, contract_version: Core.CHAT_CONTRACT_VERSION, chat_id: chatId, user_message: message, character_reply: response.reply, inner_thought: response.inner_thought, recent_summary: recentSummary, state_proposal: response.state_proposal, memory_candidates: selected, before, ...(videoOn && response.scene ? { scene: response.scene } : {}) });
     Store.replaceTurns(current.character_id, Core.trimSnapshots(Store.allTurns(current.character_id), chatId));
     resetPendingChat(); $("#manual-chat-prompt").value = ""; $("#manual-chat-response").value = "";
     refreshChatTurns(); refreshList(); render(); $("#chat-message").focus();
@@ -551,6 +556,20 @@ function composerKeydown(event) {
 function toggleProposals() {
   const on = $("#proposal-toggle").checked;
   persist((doc) => ({ ...doc, chat_settings: { ...doc.chat_settings, proposals: on } }), on ? "設定提議打開了：聊天裡他變了，AI 會提議改設定" : "設定提議關掉了：AI 不會再提議（已經有的提議還留在角色頁）");
+}
+function toggleVideo() {
+  const on = $("#video-toggle").checked;
+  persist((doc) => ({ ...doc, chat_settings: { ...doc.chat_settings, video: on } }), on ? "視訊模式打開了：他回話時會多一段畫面描述" : "視訊模式關掉了：之前的描述還留著");
+}
+// ---------- 深淺色（記在這台裝置，預設深色） ----------
+function applyTheme() {
+  const theme = Store.getSettings().theme === "light" ? "light" : "dark";
+  document.documentElement.dataset.theme = theme;
+  $("#theme-toggle").textContent = theme === "dark" ? "☀ 換成淺色" : "☾ 換成深色";
+}
+function toggleTheme() {
+  try { const s = Store.getSettings(); Store.saveSettings({ ...s, theme: s.theme === "light" ? "dark" : "light" }); applyTheme(); }
+  catch (error) { toast(error.message, true); }
 }
 function renderProposals() {
   const items = Core.activeProposals(current), box = $("#proposal-box"), list = $("#proposal-list");
@@ -596,6 +615,7 @@ function setChatZoom(on) {
 // ---------- 分頁與啟動 ----------
 function showTab(name) { if (name !== "chat") setChatZoom(false); document.querySelectorAll(".tab").forEach((x) => x.classList.toggle("active", x.dataset.tab === name)); document.querySelectorAll(".tab-panel").forEach((x) => { x.hidden = x.id !== `panel-${name}`; }); if (name === "chat") { const history = $("#chat-history"); history.scrollTop = history.scrollHeight; } }
 function start() {
+  try { applyTheme(); } catch { /* 存不了設定也照樣能玩 */ }
   try { refreshList(); if (characters[0]) { loadCharacter(characters[0].id); showTab("chat"); } }
   catch (error) { toast(error.message, true); }
 }
@@ -607,7 +627,7 @@ $("#add-relationship").onclick = addRelationship; $("#import-file").onchange = i
 $("#copy-json").onclick = () => copyText(JSON.stringify(current, null, 2), "完整 JSON 已複製");
 $("#open-settings").onclick = openSettings; $("#settings-form").onsubmit = saveSettings;
 $("#chat-form").onsubmit = generateChat; $("#chat-mode").onchange = changeChatMode; $("#copy-chat-prompt").onclick = copyChatPrompt; $("#show-chat-prompt").onclick = toggleChatPrompt; $("#parse-chat-response").onclick = parseManualChatResponse; $("#paste-chat-response").onclick = pasteChatResponse; $("#cancel-manual-chat").onclick = discardPendingChat;
-$("#real-time-toggle").onchange = toggleRealTime; $("#proposal-toggle").onchange = toggleProposals; $("#chat-zoom").onclick = () => setChatZoom(!document.body.classList.contains("chat-zoomed"));
+$("#real-time-toggle").onchange = toggleRealTime; $("#proposal-toggle").onchange = toggleProposals; $("#video-toggle").onchange = toggleVideo; $("#theme-toggle").onclick = toggleTheme; $("#chat-zoom").onclick = () => setChatZoom(!document.body.classList.contains("chat-zoomed"));
 document.addEventListener("keydown", (event) => { if (event.key === "Escape" && document.body.classList.contains("chat-zoomed") && !document.querySelector("dialog[open]")) setChatZoom(false); }); $("#new-chat").onclick = openNewChat; $("#chat-select").onchange = switchChat;
 $("#back-to-current-chat").onclick = () => { $("#chat-select").value = Core.currentChatId(current); switchChat(); };
 $("#chat-message").onkeydown = composerKeydown; $("#chat-message").oninput = growComposer;

@@ -398,3 +398,20 @@ test("設定提議：開著時提示詞會教 AI 怎麼提、附上還沒處理�
   const off = buildChatPrompt({ ...character, chat_settings: { ...character.chat_settings, proposals: false } }, [], "嗨");
   assert.doesNotMatch(off, /profile_proposals/); assert.doesNotMatch(off, /短髮/);
 });
+
+// ---------- 視訊模式 ----------
+test("視訊模式：scene 會保留，沒寫就是空的，太長會被擋；預設開著", () => {
+  assert.equal(normalize(newCharacter("羅爾")).chat_settings.video, true);
+  assert.equal(validateChatResponse({ reply: "嗯。", state_proposal: null }).scene, "");
+  assert.equal(validateChatResponse({ reply: "嗯。", state_proposal: null, scene: " 他放下杯子。 " }).scene, "他放下杯子。");
+  assert.throws(() => validateChatResponse({ reply: "嗯。", state_proposal: null, scene: "長".repeat(301) }), /scene/);
+});
+
+test("視訊模式：開著時提示詞會請 AI 寫 scene，之前的畫面會送回去；關著時完全不提", () => {
+  const character = normalize(newCharacter("羅爾"));
+  const turns = [{ user_message: "嗨", character_reply: "嗯。", scene: "他坐在窗邊。", inner_thought: "" }];
+  const on = buildChatPrompt(character, turns, "你在哪？");
+  assert.match(on, /"scene"/); assert.match(on, /視訊模式/); assert.match(on, /他坐在窗邊/);
+  const off = buildChatPrompt({ ...character, chat_settings: { ...character.chat_settings, video: false } }, [], "你在哪？");
+  assert.doesNotMatch(off, /視訊模式/); assert.doesNotMatch(off, /"scene"/);
+});
