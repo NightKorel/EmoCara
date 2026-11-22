@@ -28,7 +28,7 @@ from .state_proposals import apply_state_proposal, validate_state_proposal
 BASE_DIR = Path(__file__).resolve().parent.parent
 DB_PATH = Path(os.getenv("EMOSIM_DB", BASE_DIR / "data" / "emotional_simulator.db"))
 repository = CharacterRepository(DB_PATH)
-app = FastAPI(title="情緒模擬器｜角色檔案", version="0.1.0")
+app = FastAPI(title="情緒模擬器｜角色檔案", version="0.1.1")
 app.mount("/static", StaticFiles(directory=BASE_DIR / "static"), name="static")
 
 
