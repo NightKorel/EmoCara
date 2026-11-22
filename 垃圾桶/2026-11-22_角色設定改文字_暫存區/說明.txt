@@ -10,5 +10,5 @@
 2026-11-22 已做完並搬回正式程式（v0.1.2），這個資料夾照規則從暫存區移進垃圾桶。
 - 裡面的程式就是 v0.1.2 正式版的複本，平常用不到。
 - 被換掉的舊版畫面（七個分頁、模組要寫 JSON）沒有另外留複本；要拿回來，在專案資料夾執行：
-  git show 24531bf:static/index.html > 舊版index.html
-  （app.js、styles.css、app/ 底下的檔案一樣把路徑換掉就好。24531bf 是改版前最後一個版本。）
+  git show e866fe4:static/index.html > 舊版index.html
+  （app.js、styles.css、app/ 底下的檔案一樣把路徑換掉就好。e866fe4 是改版前最後一個版本。）
