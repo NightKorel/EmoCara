@@ -64,7 +64,7 @@ body.chat-zoomed #panel-chat > .chat-history { background:var(--cf7faf9); }
 .card-dialog { width:min(560px,calc(100vw - 30px)); }
 .card-dialog textarea { width:100%; border:1px solid var(--cccd9d6); border-radius:8px; padding:9px 10px; background:var(--cfff); color:var(--ink); resize:vertical; line-height:1.55; }
 /* 整理記憶 */
-.observer-title #memory-cleanup { margin-left:auto; }
+.observer-title #memory-cleanup { margin-left:auto; padding:8px 16px; box-shadow:0 0 0 3px var(--soft); }
 .mc-preview { display:grid; gap:6px; max-height:40vh; overflow:auto; }
 .mc-preview p { margin:0; font-size:.86rem; line-height:1.55; }
 /* 色相環 */
