@@ -1,0 +1,9 @@
+EmoCara 情緒模擬器 更新日誌（最新的寫在最上面）
+
+2026-11-22 v0.1.0 初版放上 GitHub
+- ChatGPT 做好的第一版放上 GitHub 私人 repo（NightKorel/EmoCara）。API 鑰匙（.env）沒有上傳。
+- 加了 CLAUDE.md：從推幣機搬過來的工作規則，改成適合這個專案。
+- 加了 垃圾桶/、暫存區/ 兩個資料夾，各有一份說明.txt。
+- 加了這份更新日誌和 納可要求清單.txt。
+- 角色資料（data/emotional_simulator.db）也跟著存進 git 當備份。目前有 1 個角色、0 筆對話。
+- 程式本身沒有改。
