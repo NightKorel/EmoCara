@@ -1,0 +1,7 @@
+fastapi==0.115.14
+uvicorn[standard]==0.30.6
+pytest==8.3.5
+httpx==0.28.1
+python-dotenv==1.0.1
+# 官方 Gemini Developer API SDK；只在選用 gemini 提供者時才會連線。
+google-genai==3.6.1
