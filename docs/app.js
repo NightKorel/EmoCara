@@ -586,8 +586,11 @@ function saveReply(userMessage, rawResponse) {
 function discardPendingChat() { giveBackMessage(); resetPendingChat(); $("#manual-chat-prompt").value = ""; $("#manual-chat-response").value = ""; renderChat(); toast("這句不算，剛剛打的字放回輸入框了"); }
 // 輸入框跟著字數長高，最多長到大約六行。
 function growComposer() { const box = $("#chat-message"); box.style.height = "auto"; box.style.height = `${Math.min(box.scrollHeight, 160)}px`; }
+// 手機、平板（用手指點、沒有滑鼠）：Enter 是換行，用「送出」按鈕送。電腦：Enter 送出，Shift＋Enter 換行。
+const touchOnly = window.matchMedia?.("(hover: none) and (pointer: coarse)").matches === true;
 function composerKeydown(event) {
   if (event.key !== "Enter" || event.shiftKey || event.isComposing || event.keyCode === 229) return; // 229＝中文輸入法還在選字
+  if (touchOnly && !event.ctrlKey && !event.metaKey) return;
   event.preventDefault(); $("#chat-form").requestSubmit();
 }
 
