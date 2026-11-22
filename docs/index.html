@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, interactive-widget=resizes-content" />
     <title>情緒模擬器｜角色檔案</title>
-    <link rel="stylesheet" href="styles.css?v=0.1.29" />
+    <link rel="stylesheet" href="styles.css?v=0.1.30" />
     <script>
       // 先套上深淺色，免得打開時先閃一下白色。預設深色。
       try { const s = JSON.parse(localStorage.getItem("emocara:settings") || "{}"); document.documentElement.dataset.theme = s.theme === "light" ? "light" : "dark"; }
@@ -29,7 +29,7 @@
   <body>
     <div class="app-shell">
       <aside class="sidebar">
-        <div class="brand"><span class="spark">✦</span><div><strong>情緒模擬器</strong><small>角色檔案 v0.1.29</small></div></div>
+        <div class="brand"><span class="spark">✦</span><div><strong>情緒模擬器</strong><small>角色檔案 v0.1.30</small></div></div>
         <button id="new-character" class="primary wide">＋ 新增角色</button>
         <label class="import-button wide">⇧ 匯入角色<input id="import-file" type="file" accept="application/json,.json,text/plain,.txt" /></label>
         <button id="card-open" class="secondary wide settings-button" type="button">▤ 角卡</button>
@@ -198,9 +198,9 @@
       <label class="field">手機按「放大」時<select name="phone_zoom"><option value="fullscreen">真的全螢幕（連網址列都藏起來）</option><option value="page">只在網頁裡放大</option></select></label>
       <p class="muted">只對手機、平板有用，電腦一律是網頁裡放大。iPhone 的瀏覽器不讓網頁進全螢幕，在 iPhone 上一律是網頁裡放大。</p>
       <div class="dialog-actions"><button value="cancel" class="secondary">取消</button><button value="default" class="primary">儲存</button></div></form></dialog>
-    <script src="core.js?v=0.1.29"></script>
-    <script src="store.js?v=0.1.29"></script>
-    <script src="ai.js?v=0.1.29"></script>
-    <script src="app.js?v=0.1.29"></script>
+    <script src="core.js?v=0.1.30"></script>
+    <script src="store.js?v=0.1.30"></script>
+    <script src="ai.js?v=0.1.30"></script>
+    <script src="app.js?v=0.1.30"></script>
   </body>
 </html>

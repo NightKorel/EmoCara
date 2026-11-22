@@ -732,6 +732,7 @@ mood_now 和 feeling_toward_user 各寫一兩句、100 字以內，用旁觀者�
 輸入資料的 feeling_toward_user 是他上一次對使用者的感覺：從那裡慢慢變化，除非這次真的發生了大事，不要突然翻轉。
 state_proposal 只在這次對話確實讓心理數值有變化時提出；否則填 null。
 memory_candidates 最多三筆，只記本次對話明確出現、有長期意義的事；沒有就回傳 []。
+角色資料的 memories 是已經記住的事：意思一樣或很像的不要再提，同一件事有小進展也不要另立一條。
 角色資料的 memory_settings 是各層級的筆數與每筆字數上限，要遵守；放不下的不會存。
 ${proposalsOn ? `profile_proposals：這次對話明確發生了會改變設定的事（外表變了、換工作、處境變了、想法真的變了）才提，
 最多 ${MAX_PROFILE_PROPOSALS} 筆、每欄一筆，沒有就回傳 []，不能改名字。new_text 寫那一欄改完後的完整內容，原本還成立的要保留。
