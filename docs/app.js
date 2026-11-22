@@ -575,9 +575,50 @@ function toggleVideo() {
 }
 // ---------- 深淺色（記在這台裝置，預設深色） ----------
 function applyTheme() {
-  const theme = Store.getSettings().theme === "light" ? "light" : "dark";
+  const settings = Store.getSettings(), theme = settings.theme === "light" ? "light" : "dark";
   document.documentElement.dataset.theme = theme;
+  applyHue(settings.hue, theme);
   $("#theme-toggle").textContent = theme === "dark" ? "☀ 換成淺色" : "☾ 換成深色";
+}
+// ---------- 主題色（色相環，只換色相；記在這台裝置。沒選過＝原本的青綠色） ----------
+// 每個主色：[色相差, 飽和度, 亮度]，色相差是跟主色比，照原本配色算出來的，選回 176 就跟預設幾乎一樣。
+const HUE_TONES = {
+  light: { "--accent": [0, 39, 35], "--accent-dark": [1, 47, 25], "--soft": [-14, 24, 92], "--c213b3d": [9, 30, 18] },
+  dark: { "--accent": [0, 39, 40], "--accent-dark": [-3, 45, 69], "--soft": [-1, 30, 17], "--c213b3d": [9, 25, 11], "--accent-hover": [0, 35, 48] },
+};
+const DEFAULT_HUE = 176;
+function applyHue(hue, theme = document.documentElement.dataset.theme) {
+  const root = document.documentElement.style;
+  Object.keys({ ...HUE_TONES.light, ...HUE_TONES.dark }).forEach((name) => root.removeProperty(name));
+  if (!Number.isFinite(hue)) return;
+  for (const [name, [shift, s, l]] of Object.entries(HUE_TONES[theme] || HUE_TONES.dark)) root.setProperty(name, `hsl(${(((hue + shift) % 360) + 360) % 360} ${s}% ${l}%)`);
+}
+function currentHue() { const hue = Store.getSettings().hue; return Number.isFinite(hue) ? hue : DEFAULT_HUE; }
+function placeHueKnob(hue) {
+  const ring = $("#hue-ring"), radius = ring.clientWidth / 2 - 17, angle = (hue * Math.PI) / 180;
+  $("#hue-knob").style.transform = `translate(${Math.sin(angle) * radius}px, ${-Math.cos(angle) * radius}px)`;
+  $("#hue-knob").style.background = `hsl(${hue} 45% 45%)`;
+  ring.setAttribute("aria-valuenow", String(Math.round(hue)));
+}
+function setHue(hue) {
+  hue = Math.round(((hue % 360) + 360) % 360);
+  try { Store.saveSettings({ ...Store.getSettings(), hue }); } catch (error) { toast(error.message, true); }
+  applyHue(hue); placeHueKnob(hue);
+}
+function openHueDialog() { $("#hue-dialog").showModal(); placeHueKnob(currentHue()); }
+function hueFromPointer(event) {
+  const rect = $("#hue-ring").getBoundingClientRect();
+  const dx = event.clientX - (rect.left + rect.width / 2), dy = event.clientY - (rect.top + rect.height / 2);
+  setHue((Math.atan2(dx, -dy) * 180) / Math.PI);
+}
+function setupHueRing() {
+  const ring = $("#hue-ring"); let dragging = false;
+  ring.addEventListener("pointerdown", (event) => { dragging = true; ring.setPointerCapture(event.pointerId); hueFromPointer(event); });
+  ring.addEventListener("pointermove", (event) => { if (dragging) hueFromPointer(event); });
+  ring.addEventListener("pointerup", () => { dragging = false; });
+  ring.addEventListener("keydown", (event) => { const step = { ArrowRight: 5, ArrowUp: 5, ArrowLeft: -5, ArrowDown: -5 }[event.key]; if (step) { event.preventDefault(); setHue(currentHue() + step); } });
+  $("#hue-reset").onclick = () => { try { const { hue, ...rest } = Store.getSettings(); Store.saveSettings(rest); } catch (error) { toast(error.message, true); } applyHue(null); placeHueKnob(DEFAULT_HUE); };
+  $("#hue-open").onclick = openHueDialog;
 }
 function toggleTheme() {
   try { const s = Store.getSettings(); Store.saveSettings({ ...s, theme: s.theme === "light" ? "dark" : "light" }); applyTheme(); }
@@ -618,8 +659,16 @@ function resolveProposalUI(item, accept, text) {
 }
 
 // ---------- 聊天室放大（網頁裡鋪滿畫面） ----------
+// 放大時那一欄的寬度（記在這台裝置）。
+function applyChatWidth(width) { if (Number.isFinite(width)) document.documentElement.style.setProperty("--chat-width", `${width}px`); }
+function changeChatWidth() {
+  const width = Number($("#chat-width").value); applyChatWidth(width);
+  try { Store.saveSettings({ ...Store.getSettings(), chat_width: width }); } catch { /* 存不了也照樣能調 */ }
+}
 function setChatZoom(on) {
   document.body.classList.toggle("chat-zoomed", on);
+  $("#chat-width-box").hidden = !on;
+  if (on) { const saved = Store.getSettings().chat_width; $("#chat-width").value = Number.isFinite(saved) ? saved : 820; applyChatWidth(Number($("#chat-width").value)); }
   const button = $("#chat-zoom"); button.textContent = on ? "縮小" : "放大"; button.title = on ? "回到原本的大小（也可以按 Esc）" : "聊天室鋪滿整個畫面";
   const history = $("#chat-history"); history.scrollTop = history.scrollHeight;
 }
@@ -628,6 +677,7 @@ function setChatZoom(on) {
 function showTab(name) { if (name !== "chat") setChatZoom(false); document.querySelectorAll(".tab").forEach((x) => x.classList.toggle("active", x.dataset.tab === name)); document.querySelectorAll(".tab-panel").forEach((x) => { x.hidden = x.id !== `panel-${name}`; }); if (name === "chat") { const history = $("#chat-history"); history.scrollTop = history.scrollHeight; } }
 function start() {
   try { applyTheme(); } catch { /* 存不了設定也照樣能玩 */ }
+  setupHueRing(); $("#chat-width").oninput = changeChatWidth;
   try { refreshList(); if (characters[0]) { loadCharacter(characters[0].id); showTab("chat"); } }
   catch (error) { toast(error.message, true); }
 }

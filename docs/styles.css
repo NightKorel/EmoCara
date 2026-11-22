@@ -50,6 +50,22 @@ dialog { border:0; padding:0; border-radius:13px; box-shadow:0 18px 60px rgba(20
 body.chat-zoomed { overflow:hidden; }
 body.chat-zoomed #panel-chat { position:fixed; inset:0; z-index:40; border:0; border-radius:0; box-shadow:none; height:100vh; height:100dvh; }
 body.chat-zoomed .chat-panel .chat-history { flex:1 1 auto; height:auto; min-height:0; }
+/* 放大時內容置中一欄，寬度用標題列的滑桿調（記在這台裝置） */
+body.chat-zoomed #panel-chat { background:var(--canvas); }
+body.chat-zoomed #panel-chat > * { width:100%; max-width:var(--chat-width, 820px); margin-inline:auto; background:var(--paper); border-inline:1px solid var(--line); }
+body.chat-zoomed #panel-chat > .chat-history { background:var(--cf7faf9); }
+.chat-width { display:flex; align-items:center; gap:6px; font-size:.78rem; color:var(--muted); }
+.chat-width input { width:110px; accent-color:var(--accent); }
+@media (max-width:780px) { .chat-width { display:none !important; } }
+/* 色相環 */
+dialog { background:var(--paper); color:var(--ink); }
+.hue-dot { display:inline-block; width:.8em; height:.8em; margin-right:7px; border-radius:50%; background:var(--accent); vertical-align:-1px; }
+.hue-ring { position:relative; width:220px; height:220px; margin:4px auto; border-radius:50%; cursor:pointer; touch-action:none;
+  background:conic-gradient(hsl(0 45% 45%), hsl(60 45% 45%), hsl(120 45% 45%), hsl(180 45% 45%), hsl(240 45% 45%), hsl(300 45% 45%), hsl(360 45% 45%)); }
+.hue-ring::after { content:""; position:absolute; inset:34px; border-radius:50%; background:var(--paper); }
+.hue-center { position:absolute; inset:62px; border-radius:50%; background:var(--accent); z-index:1; }
+.hue-knob { position:absolute; left:50%; top:50%; width:24px; height:24px; margin:-12px 0 0 -12px; border-radius:50%; border:3px solid #fff; box-shadow:0 0 0 1px rgba(0,0,0,.35); z-index:2; pointer-events:none; }
+.hue-ring:focus-visible { outline:3px solid var(--accent); outline-offset:4px; }
 .toast { z-index:60; }
 .chat-panel .chat-history { display:flex; flex-direction:column; gap:10px; height:min(62vh,620px); min-height:260px; max-height:none; margin:0; padding:20px 22px; overflow-y:auto; background:var(--cf7faf9); }
 .chat-panel .chat-empty { margin:auto; border:0; }
@@ -138,7 +154,7 @@ body.chat-zoomed .chat-panel .chat-history { flex:1 1 auto; height:auto; min-hei
 /* 深淺色：下面這些 --cXXXXXX 用淺色時的顏色命名，深色時換成另一組。2026-11-22 v0.1.14 */
 :root { --c1f3335:#1f3335; --c213b3d:#213b3d; --c3e4c58:#3e4c58; --c46575b:#46575b; --c4d5b66:#4d5b66; --c7a5a2c:#7a5a2c; --c814d3d:#814d3d; --c8a5a22:#8a5a22; --c9aa7ab:#9aa7ab; --c9cc3b8:#9cc3b8; --ca0672b:#a0672b; --cb7d4ca:#b7d4ca; --cb9c4d6:#b9c4d6; --cccd9d6:#ccd9d6; --cd8e7e1:#d8e7e1; --ce2c9a8:#e2c9a8; --ce3ebea:#e3ebea; --ceef2f1:#eef2f1; --ceef2f6:#eef2f6; --ceef4f2:#eef4f2; --ceef5f2:#eef5f2; --cf0e0c4:#f0e0c4; --cf1f6f4:#f1f6f4; --cf4e7df:#f4e7df; --cf7faf9:#f7faf9; --cf7fbf9:#f7fbf9; --cf8f9fc:#f8f9fc; --cfbfaf5:#fbfaf5; --cfbfdfc:#fbfdfc; --cfcfefd:#fcfefd; --cfff:#fff; --cfff3ea:#fff3ea; --cfff6e8:#fff6e8; --cfff8ee:#fff8ee; }
 :root[data-theme="dark"] { color-scheme:dark; --ink:#e3ecea; --muted:#98a9ac; --line:#2c3b3c; --canvas:#111a1b; --paper:#182223; --accent:#3f8f89; --accent-dark:#8fd3cb; --soft:#1f3a38; --danger:#e27c79; --shadow:0 14px 35px rgba(0,0,0,.35); --c1f3335:#0e1617; --c213b3d:#152223; --c3e4c58:#b9c6d8; --c46575b:#b4c3c6; --c4d5b66:#aab6c4; --c7a5a2c:#e0bf8a; --c814d3d:#f0b8a5; --c8a5a22:#e8bb7d; --c9aa7ab:#7f8f93; --c9cc3b8:#4d7a71; --ca0672b:#e5ad6a; --cb7d4ca:#3f5a55; --cb9c4d6:#4a5874; --cccd9d6:#3a4b4c; --cd8e7e1:#33494a; --ce2c9a8:#6a5338; --ce3ebea:#2a3839; --ceef2f1:#243233; --ceef2f6:#232a38; --ceef4f2:#223031; --ceef5f2:#223031; --cf0e0c4:#5a4a30; --cf1f6f4:#1d292a; --cf4e7df:#3a2b25; --cf7faf9:#141d1e; --cf7fbf9:#1a2526; --cf8f9fc:#1c2230; --cfbfaf5:#1f1e18; --cfbfdfc:#1a2526; --cfcfefd:#1a2526; --cfff:#1f2b2c; --cfff3ea:#2e2620; --cfff6e8:#2c251c; --cfff8ee:#2d261d; }
-:root[data-theme="dark"] .primary:hover { background:#4fa59f; }
+:root[data-theme="dark"] .primary:hover { background:var(--accent-hover, #4fa59f); }
 :root[data-theme="dark"] input, :root[data-theme="dark"] textarea, :root[data-theme="dark"] select { color:var(--ink); }
 .chat-scene { align-self:flex-start; max-width:78%; margin:4px 2px -4px; color:var(--muted); font-size:.86rem; line-height:1.65; white-space:pre-wrap; }
 .thought-scene { color:var(--muted); }
