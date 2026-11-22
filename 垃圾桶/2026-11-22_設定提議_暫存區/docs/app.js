@@ -39,7 +39,7 @@ function render() {
   $("#character-title").textContent = current.profile.name || "未命名角色";
   $("#save-status").textContent = `已存在這台裝置 · ${formatTime(current.metadata.updated_at)}`;
   if (!characterDirty) renderCharacterForm();
-  renderMemorySettings(); renderState(); renderRelationships(); renderChat(); renderObserver();
+  renderMemorySettings(); renderState(); renderRelationships(); renderChat(); renderObserver(); renderProposals();
   $("#json-preview").textContent = JSON.stringify(current, null, 2);
   renderList();
 }
@@ -302,7 +302,6 @@ let openCancel = null;
 function savedTurnPeek(turn, latest) {
   const key = turn.id || turn.created_at, wrap = el("div", "chat-peek");
   const bar = el("div", "chat-under"); bar.append(el("span", "chat-time", shortTime(turn.created_at)), peekToggle(key));
-  if (latest) { const cancel = el("button", "cancel-turn", "取消"); cancel.type = "button"; cancel.title = "這一來一回不算，你的話放回輸入框"; cancel.onclick = () => rewindFrom(turn.id, { quiet: true }); bar.append(cancel); }
   wrap.append(bar);
   if (openPeeks.has(key)) wrap.append(innerLines(turn.inner_thought));
   return wrap;
@@ -320,8 +319,14 @@ function renderChat() {
     if (openRewind === turn.id) { const again = el("button", "rewind-button", "↺ 從這句重來"); again.type = "button"; again.onclick = () => rewindFrom(turn.id); mine.append(again); }
     history.append(mine);
     const latest = !viewingOldChat() && !pendingMessage && turn === chatTurns[chatTurns.length - 1];
-    const row = bubble("them", turn.character_reply, latest ? "latest" : ""); row.append(savedTurnPeek(turn, latest));
-    if (latest) { if (openCancel === turn.id) row.classList.add("show-cancel"); row.firstChild.onclick = () => { openCancel = openCancel === turn.id ? null : turn.id; row.classList.toggle("show-cancel", openCancel === turn.id); }; }
+    const row = bubble("them", turn.character_reply, latest ? "latest" : "");
+    // 他最新那句：跟你的泡泡一樣，點一下才出現「取消這句」。
+    if (latest) {
+      row.firstChild.title = "點一下：取消這句";
+      row.firstChild.onclick = () => { openCancel = openCancel === turn.id ? null : turn.id; openRewind = null; keepScrollRender(); };
+      if (openCancel === turn.id) { const cancel = el("button", "rewind-button", "✕ 取消這句"); cancel.type = "button"; cancel.onclick = () => rewindFrom(turn.id, { quiet: true }); row.append(cancel); }
+    }
+    row.append(savedTurnPeek(turn, latest));
     history.append(row);
   });
   const old = viewingOldChat();
@@ -340,6 +345,7 @@ function renderChat() {
   $("#manual-chat-workflow").hidden = old || !(manual && pendingMessage && !pendingChat);
   $("#chat-form").hidden = old; $(".chat-mode-row").hidden = old; $("#old-chat-banner").hidden = !old;
   $("#real-time-toggle").checked = current.chat_settings?.real_time === true;
+  $("#proposal-toggle").checked = current.chat_settings?.proposals !== false;
   renderChatSelect();
   $("#model-status").textContent = manual ? "手動模式：不連網" : (ready ? "自動模式：Gemini" : "還沒在「設定」填 Gemini 鑰匙");
   $("#model-status").classList.toggle("ready", manual || ready);
@@ -375,9 +381,10 @@ function switchChat() { const value = $("#chat-select").value; viewingChatId = v
 function tapMyBubble(turn, allTurns) {
   if (viewingOldChat()) { toast("舊的聊天只能看，不能從這句重來。", true); return; }
   if (!Core.rewindKind(current, allTurns, turn.id)) { toast(`只有最近 ${Core.REWIND_LIMIT} 句能從那句重來，這句太早了。`, true); return; }
-  openRewind = openRewind === turn.id ? null : turn.id;
-  const history = $("#chat-history"), top = history.scrollTop; scrollChatToEnd = false; renderChat(); history.scrollTop = top;
+  openRewind = openRewind === turn.id ? null : turn.id; openCancel = null;
+  keepScrollRender();
 }
+function keepScrollRender() { const history = $("#chat-history"), top = history.scrollTop; scrollChatToEnd = false; renderChat(); history.scrollTop = top; }
 // quiet：最新那句的「取消」，只退一句時跳短一點的警告。
 function rewindFrom(turnId, { quiet = false } = {}) {
   try {
@@ -387,10 +394,12 @@ function rewindFrom(turnId, { quiet = false } = {}) {
     if (result.kind === "full") lines.push("・他的心情、記住的事、心裡的話，會退回你講這句之前。");
     else lines.push("・注意：這句是更新前的舊對話，沒有存當時他的樣子。對話會消失，但他現在的心情和記住的事退不回去，會維持現在的樣子。");
     lines.push("・你這句話會放回輸入框，可以改一改重講。");
+    if (result.removedProposals) lines.push(`・這幾句帶出、你還沒處理的 ${result.removedProposals} 筆設定提議會一起拿掉（已經同意的不會退回去）。`);
     if (pendingMessage) lines.push("・還在等回覆的那句也會一起丟掉。");
     lines.push("", "確定要重來嗎？");
     const short = quiet && result.kind === "full" && result.removed === 1 && !pendingMessage;
-    const warning = short ? "取消這句？\n\n・他這句回覆會消失，找不回來。\n・他的心情、記住的事、心裡話、摘要，會退回你講這句之前。\n・你的話會放回輸入框。\n\n確定要取消嗎？" : lines.join("\n");
+    const proposalLine = result.removedProposals ? `\n・這句帶出的 ${result.removedProposals} 筆設定提議會一起拿掉。` : "";
+    const warning = short ? `取消這句？\n\n・他這句回覆會消失，找不回來。\n・他的心情、記住的事、心裡話、摘要，會退回你講這句之前。${proposalLine}\n・你的話會放回輸入框。\n\n確定要取消嗎？` : lines.join("\n");
     if (!confirm(warning)) return;
     current = Store.saveTurnsAndCharacter(Core.normalize(result.character), result.turns);
     resetPendingChat(); $("#manual-chat-prompt").value = ""; $("#manual-chat-response").value = "";
@@ -414,14 +423,14 @@ function toggleRealTime() {
     return;
   }
   const last = Core.turnsInChat(Store.allTurns(current.character_id), Core.currentChatId(current)).slice(-1)[0];
-  if (!last) { persist((doc) => ({ ...doc, chat_settings: { real_time: true, time_since: null } }), "現實時間打開了：他會知道現在幾點"); return; }
+  if (!last) { persist((doc) => ({ ...doc, chat_settings: { ...doc.chat_settings, real_time: true, time_since: null } }), "現實時間打開了：他會知道現在幾點"); return; }
   box.checked = false;
   $("#time-dialog-text").textContent = `上一句是 ${Core.describeTime(last.created_at)} 講的（${relativeTime(last.created_at)}）。對他來說，上一句要算什麼時候？`;
   $("#time-dialog-real").textContent = `他會知道上一句是 ${relativeTime(last.created_at)}，可能會對隔了多久有反應。`;
   const dialog = $("#time-dialog"); dialog.returnValue = "cancel";
   dialog.onclose = () => {
-    if (dialog.returnValue === "now") persist((doc) => ({ ...doc, chat_settings: { real_time: true, time_since: Core.timestamp() } }), "現實時間打開了：之前的對話算剛剛");
-    else if (dialog.returnValue === "real") persist((doc) => ({ ...doc, chat_settings: { real_time: true, time_since: null } }), "現實時間打開了：照真實時間");
+    if (dialog.returnValue === "now") persist((doc) => ({ ...doc, chat_settings: { ...doc.chat_settings, real_time: true, time_since: Core.timestamp() } }), "現實時間打開了：之前的對話算剛剛");
+    else if (dialog.returnValue === "real") persist((doc) => ({ ...doc, chat_settings: { ...doc.chat_settings, real_time: true, time_since: null } }), "現實時間打開了：照真實時間");
   };
   dialog.showModal();
 }
@@ -514,14 +523,19 @@ function saveReply(userMessage, rawResponse) {
     const message = Core.validateUserMessage(userMessage), clean = Core.validateChatResponse(rawResponse);
     const { kept, skipped } = Core.fittingMemories(current, clean.memory_candidates);
     const { updated, response, selected } = Core.applyChatResponse(current, clean, kept);
-    const chatId = Core.currentChatId(current), before = Core.snapshotOf(current);
+    const chatId = Core.currentChatId(current), before = Core.snapshotOf(current), turnId = Core.newTurnId();
+    // 設定提議開著才收；放進角色頁的待處理清單，同意了才會改設定。
+    const proposalsOn = current.chat_settings?.proposals !== false, waitingBefore = Core.activeProposals(current).length;
+    const withProposals = proposalsOn ? Core.addProposals(updated, response.profile_proposals, turnId).updated : updated;
     // AI 這次沒寫摘要的話，沿用這段聊天上一份。
     const recentSummary = response.recent_summary || Core.chatSummary(Store.allTurns(current.character_id), chatId) || undefined;
-    current = Store.saveTurn(updated, { contract_version: Core.CHAT_CONTRACT_VERSION, chat_id: chatId, user_message: message, character_reply: response.reply, inner_thought: response.inner_thought, recent_summary: recentSummary, state_proposal: response.state_proposal, memory_candidates: selected, before });
+    current = Store.saveTurn(withProposals, { id: turnId, contract_version: Core.CHAT_CONTRACT_VERSION, chat_id: chatId, user_message: message, character_reply: response.reply, inner_thought: response.inner_thought, recent_summary: recentSummary, state_proposal: response.state_proposal, memory_candidates: selected, before });
     Store.replaceTurns(current.character_id, Core.trimSnapshots(Store.allTurns(current.character_id), chatId));
     resetPendingChat(); $("#manual-chat-prompt").value = ""; $("#manual-chat-response").value = "";
     refreshChatTurns(); refreshList(); render(); $("#chat-message").focus();
     if (skipped.length) toast(`記憶滿了，有 ${skipped.length} 件想記住的事沒存（可以到「角色 → 進階」調大記憶容量）。`);
+    const waiting = Core.activeProposals(current).length;
+    if (!skipped.length && waiting >= Core.PROPOSAL_REMINDER && waitingBefore < Core.PROPOSAL_REMINDER) toast(`AI 提議的設定變化積了 ${waiting} 筆，有空到「角色」分頁看看。`);
     return true;
   } catch (error) { toast(error.message, true); return false; }
 }
@@ -533,8 +547,54 @@ function composerKeydown(event) {
   event.preventDefault(); $("#chat-form").requestSubmit();
 }
 
+// ---------- 設定提議 ----------
+function toggleProposals() {
+  const on = $("#proposal-toggle").checked;
+  persist((doc) => ({ ...doc, chat_settings: { ...doc.chat_settings, proposals: on } }), on ? "設定提議打開了：聊天裡他變了，AI 會提議改設定" : "設定提議關掉了：AI 不會再提議（已經有的提議還留在角色頁）");
+}
+function renderProposals() {
+  const items = Core.activeProposals(current), box = $("#proposal-box"), list = $("#proposal-list");
+  const many = items.length >= Core.PROPOSAL_REMINDER;
+  box.hidden = !items.length; box.classList.toggle("many", many);
+  $("#proposal-summary").textContent = `AI 提議的設定變化（${items.length} 筆）${many ? "：積很多了，有空看看" : ""}`;
+  const tab = document.querySelector('.tab[data-tab="character"]'); tab.textContent = "角色";
+  if (many) tab.append(el("span", "tab-badge", String(items.length)));
+  list.innerHTML = "";
+  items.forEach((item) => {
+    const card = el("article", "proposal-card");
+    card.append(el("strong", "", item.label), el("small", "", `${formatTime(item.created_at)} · ${item.reason}`));
+    card.append(el("p", "proposal-now", `現在：${item.current_text.trim() || "（空的）"}`));
+    const next = el("p", "proposal-new", `提議改成：${item.new_text}`); card.append(next);
+    const editor = el("textarea"); editor.rows = 4; editor.value = item.new_text; editor.hidden = true; editor.setAttribute("aria-label", `${item.label}要改成的文字`); card.append(editor);
+    if (item.older.length) {
+      const older = el("details", "proposal-older"); older.append(el("summary", "", `這欄之前還提過 ${item.older.length} 次（被這筆取代了）`));
+      item.older.forEach((old) => older.append(el("p", "", `${formatTime(old.created_at)}：${old.new_text}`)));
+      card.append(older);
+    }
+    const actions = el("div", "proposal-actions");
+    const reject = el("button", "secondary small-button", "不要"); reject.type = "button"; reject.onclick = () => resolveProposalUI(item, false);
+    const edit = el("button", "secondary small-button", "修一下"); edit.type = "button";
+    const accept = el("button", "primary small-button", "同意"); accept.type = "button"; accept.onclick = () => resolveProposalUI(item, true, editor.hidden ? undefined : editor.value);
+    edit.onclick = () => { editor.hidden = false; next.hidden = true; edit.hidden = true; accept.textContent = "用改過的同意"; editor.focus(); };
+    actions.append(reject, edit, accept); card.append(actions);
+    list.append(card);
+  });
+}
+function resolveProposalUI(item, accept, text) {
+  if (characterDirty) { toast("角色頁有還沒儲存的修改，先按「儲存角色」，再處理提議。", true); return; }
+  if (!accept && !confirm(`不要這個提議？\n\n「${item.label}」這筆提議會從清單拿掉${item.older.length ? `（連同之前的 ${item.older.length} 筆）` : ""}，找不回來。設定不會改。\n\n確定不要嗎？`)) return;
+  if (persist((doc) => Core.resolveProposal(doc, item.proposal_id, { accept, text }), accept ? `${item.label}改好了` : "這筆提議拿掉了")) { buildDraft(); renderCharacterForm(); }
+}
+
+// ---------- 聊天室放大（網頁裡鋪滿畫面） ----------
+function setChatZoom(on) {
+  document.body.classList.toggle("chat-zoomed", on);
+  const button = $("#chat-zoom"); button.textContent = on ? "縮小" : "放大"; button.title = on ? "回到原本的大小（也可以按 Esc）" : "聊天室鋪滿整個畫面";
+  const history = $("#chat-history"); history.scrollTop = history.scrollHeight;
+}
+
 // ---------- 分頁與啟動 ----------
-function showTab(name) { document.querySelectorAll(".tab").forEach((x) => x.classList.toggle("active", x.dataset.tab === name)); document.querySelectorAll(".tab-panel").forEach((x) => { x.hidden = x.id !== `panel-${name}`; }); if (name === "chat") { const history = $("#chat-history"); history.scrollTop = history.scrollHeight; } }
+function showTab(name) { if (name !== "chat") setChatZoom(false); document.querySelectorAll(".tab").forEach((x) => x.classList.toggle("active", x.dataset.tab === name)); document.querySelectorAll(".tab-panel").forEach((x) => { x.hidden = x.id !== `panel-${name}`; }); if (name === "chat") { const history = $("#chat-history"); history.scrollTop = history.scrollHeight; } }
 function start() {
   try { refreshList(); if (characters[0]) { loadCharacter(characters[0].id); showTab("chat"); } }
   catch (error) { toast(error.message, true); }
@@ -547,7 +607,8 @@ $("#add-relationship").onclick = addRelationship; $("#import-file").onchange = i
 $("#copy-json").onclick = () => copyText(JSON.stringify(current, null, 2), "完整 JSON 已複製");
 $("#open-settings").onclick = openSettings; $("#settings-form").onsubmit = saveSettings;
 $("#chat-form").onsubmit = generateChat; $("#chat-mode").onchange = changeChatMode; $("#copy-chat-prompt").onclick = copyChatPrompt; $("#show-chat-prompt").onclick = toggleChatPrompt; $("#parse-chat-response").onclick = parseManualChatResponse; $("#paste-chat-response").onclick = pasteChatResponse; $("#cancel-manual-chat").onclick = discardPendingChat;
-$("#real-time-toggle").onchange = toggleRealTime; $("#new-chat").onclick = openNewChat; $("#chat-select").onchange = switchChat;
+$("#real-time-toggle").onchange = toggleRealTime; $("#proposal-toggle").onchange = toggleProposals; $("#chat-zoom").onclick = () => setChatZoom(!document.body.classList.contains("chat-zoomed"));
+document.addEventListener("keydown", (event) => { if (event.key === "Escape" && document.body.classList.contains("chat-zoomed") && !document.querySelector("dialog[open]")) setChatZoom(false); }); $("#new-chat").onclick = openNewChat; $("#chat-select").onchange = switchChat;
 $("#back-to-current-chat").onclick = () => { $("#chat-select").value = Core.currentChatId(current); switchChat(); };
 $("#chat-message").onkeydown = composerKeydown; $("#chat-message").oninput = growComposer;
 document.querySelectorAll(".tab").forEach((button) => { button.onclick = () => showTab(button.dataset.tab); });

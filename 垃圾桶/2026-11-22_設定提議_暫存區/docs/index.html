@@ -9,7 +9,7 @@
   <body>
     <div class="app-shell">
       <aside class="sidebar">
-        <div class="brand"><span class="spark">✦</span><div><strong>情緒模擬器</strong><small>角色檔案 v0.1.12</small></div></div>
+        <div class="brand"><span class="spark">✦</span><div><strong>情緒模擬器</strong><small>角色檔案 v0.1.13</small></div></div>
         <button id="new-character" class="primary wide">＋ 新增角色</button>
         <label class="import-button wide">⇧ 匯入角色<input id="import-file" type="file" accept="application/json,.json" /></label>
         <nav><p class="nav-label">我的角色</p><div id="character-list" class="character-list"></div></nav>
@@ -33,9 +33,10 @@
           </div>
 
           <section id="panel-chat" class="panel tab-panel chat-panel" hidden>
-            <div class="chat-topbar"><h2 id="chat-title">聊天</h2><span id="model-status" class="model-status">檢查模型設定中…</span></div>
+            <div class="chat-topbar"><h2 id="chat-title">聊天</h2><div class="chat-topbar-right"><span id="model-status" class="model-status">檢查模型設定中…</span><button id="chat-zoom" class="secondary small-button" type="button" title="聊天室鋪滿整個畫面">放大</button></div></div>
             <div class="chat-tools">
               <label class="time-switch" title="開著：他知道現在幾點、隔了多久。關著：時間不流動。"><input type="checkbox" id="real-time-toggle"> 現實時間</label>
+              <label class="time-switch" title="開著：聊天裡發生的事改變了他，AI 會提議改他的設定，你同意才會改。"><input type="checkbox" id="proposal-toggle"> 設定提議</label>
               <select id="chat-select" aria-label="切換聊天視窗" hidden></select>
               <button id="new-chat" class="text-button" type="button">開新聊天</button>
             </div>
@@ -62,6 +63,11 @@
 
           <section id="panel-character" class="panel tab-panel">
             <div class="section-heading"><div><h2>角色</h2><p>用你自己的話寫就好。空著的格子會直接跳過，不用填滿。</p></div><button id="save-character" class="primary">儲存角色</button></div>
+            <details id="proposal-box" class="advanced proposal-box" hidden>
+              <summary id="proposal-summary">AI 提議的設定變化</summary>
+              <p class="muted proposal-intro">聊天裡發生的事改變了他，AI 提議這樣改。放著不處理也沒關係，同意了才會改進設定。</p>
+              <div id="proposal-list" class="proposal-list"></div>
+            </details>
             <form id="character-form">
               <div class="form-grid">
                 <label class="field span-2">名字<input name="name" required placeholder="角色姓名" /></label>

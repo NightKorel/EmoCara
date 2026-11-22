@@ -25,12 +25,32 @@ dialog { border:0; padding:0; border-radius:13px; box-shadow:0 18px 60px rgba(20
 .advanced-main { margin-top:22px; background:var(--paper); }
 .advanced-section { padding:18px 0; border-top:1px solid var(--line); } .advanced-section h3 { margin:0; }
 .dirty-note { color:#a0672b; font-size:.86rem; margin-right:auto; align-self:center; }
+.proposal-box { margin:0 0 18px; background:#fbfaf5; }
+.proposal-box.many > summary { color:#a0672b; }
+.proposal-intro { margin:0 0 12px; font-size:.86rem; line-height:1.5; }
+.proposal-list { display:grid; gap:12px; padding-bottom:12px; }
+.proposal-card { border:1px solid var(--line); border-radius:10px; padding:12px 14px; background:#fff; display:grid; gap:7px; }
+.proposal-card p { margin:0; line-height:1.55; white-space:pre-wrap; font-size:.88rem; }
+.proposal-card small { color:var(--muted); font-size:.76rem; }
+.proposal-now { color:var(--muted); }
+.proposal-new { border-left:3px solid var(--accent); padding-left:9px; }
+.proposal-card textarea { width:100%; border:1px solid #ccd9d6; border-radius:8px; padding:9px 10px; color:var(--ink); resize:vertical; line-height:1.6; }
+.proposal-older summary { cursor:pointer; color:var(--muted); font-size:.8rem; }
+.proposal-older p { margin-top:6px; color:var(--muted); font-size:.82rem; }
+.proposal-actions { display:flex; gap:8px; justify-content:flex-end; flex-wrap:wrap; }
+.tab-badge { display:inline-block; margin-left:5px; min-width:18px; padding:0 5px; border-radius:9px; background:#c98a3d; color:#fff; font-size:.72rem; line-height:18px; text-align:center; }
 
 .settings-button { background:transparent; color:#d8e6e3; border:1px solid rgba(255,255,255,.23); font-size:.9rem; }
 /* 聊天：泡泡樣式（2026-11-22 v0.1.5） */
 .chat-panel { display:flex; flex-direction:column; padding:0; overflow:hidden; }
 .chat-topbar { display:flex; justify-content:space-between; align-items:center; gap:12px; padding:16px 22px; border-bottom:1px solid var(--line); }
 .chat-topbar h2 { margin:0; font-size:1.1rem; }
+.chat-topbar-right { display:flex; align-items:center; gap:10px; }
+/* 聊天室放大：鋪滿整個瀏覽器畫面（網頁裡的放大，不是真的全螢幕） */
+body.chat-zoomed { overflow:hidden; }
+body.chat-zoomed #panel-chat { position:fixed; inset:0; z-index:40; border:0; border-radius:0; box-shadow:none; height:100vh; height:100dvh; }
+body.chat-zoomed .chat-panel .chat-history { flex:1 1 auto; height:auto; min-height:0; }
+.toast { z-index:60; }
 .chat-panel .chat-history { display:flex; flex-direction:column; gap:10px; height:min(62vh,620px); min-height:260px; max-height:none; margin:0; padding:20px 22px; overflow-y:auto; background:#f7faf9; }
 .chat-panel .chat-empty { margin:auto; border:0; }
 .chat-row { display:flex; flex-direction:column; max-width:78%; }
@@ -112,6 +132,6 @@ dialog { border:0; padding:0; border-radius:13px; box-shadow:0 18px 60px rgba(20
 .gemini-failed { align-self:stretch; display:grid; gap:8px; margin:2px 0; padding:11px 13px; border-radius:10px; background:#fff3ea; color:#814d3d; font-size:.84rem; line-height:1.55; }
 .gemini-failed p { margin:0; white-space:pre-wrap; }
 /* 自動存：最新那句的「取消」（2026-11-22 v0.1.11） */
-.cancel-turn { display:none; border:0; background:transparent; color:#a0613f; font-size:.76rem; padding:2px 4px; text-decoration:underline dotted; }
-.chat-row.latest:hover .cancel-turn,.chat-row.latest.show-cancel .cancel-turn { display:inline-block; }
+/* 取消這句：跟「從這句重來」一樣，點泡泡才出現 */
+.chat-row.them.latest .chat-bubble { cursor:pointer; }
 .chat-row.latest .chat-bubble { cursor:pointer; }

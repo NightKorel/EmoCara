@@ -318,3 +318,83 @@ test("自動存記憶：只存放得下的，滿了那層不存，舊記憶不�
   const { updated } = applyChatResponse(character, { reply: "嗯。", state_proposal: null, memory_candidates: [...kept, ...skipped] }, kept);
   assert.equal(updated.memories.length, 2);
 });
+
+// ---------- 設定提議 ----------
+const { addProposals, activeProposals, resolveProposal, validateProfileProposals, PROPOSAL_FIELDS } = Core;
+const proposalReply = (items) => ({ reply: "嗯。", state_proposal: null, memory_candidates: [], profile_proposals: items });
+
+test("設定提議：格式對才收；不能改名字、不能亂加欄位；沒寫就是空的", () => {
+  assert.deepEqual(validateChatResponse({ reply: "嗯。", state_proposal: null }).profile_proposals, []);
+  const ok = validateChatResponse(proposalReply([{ target: "appearance", new_text: " 短髮 ", reason: "剛剪了頭髮" }]));
+  assert.deepEqual(ok.profile_proposals, [{ target: "appearance", new_text: "短髮", reason: "剛剪了頭髮" }]);
+  assert.throws(() => validateProfileProposals([{ target: "name", new_text: "新名字", reason: "x" }]), /target/);
+  assert.throws(() => validateProfileProposals([{ target: "appearance", new_text: "短髮", reason: "x", extra: 1 }]), /只能包含/);
+  assert.throws(() => validateProfileProposals([{ target: "module", new_text: "x", reason: "x" }]), /只能包含/);
+  assert.throws(() => validateProfileProposals([{ target: "appearance", new_text: "a", reason: "x" }, { target: "appearance", new_text: "b", reason: "y" }]), /同一欄/);
+  assert.throws(() => validateProfileProposals([1, 2, 3]), /至多/);
+  assert.ok(!("name" in PROPOSAL_FIELDS));
+});
+
+test("設定提議：關著的模組、不存在的模組、跟現在一樣的，不會進清單", () => {
+  const character = normalize(newCharacter("羅爾"));
+  character.profile.appearance = "長髮";
+  const off = newModule("values"); off.text = "誠實"; off.enabled = false; character.modules.push(off);
+  const { updated, added, skipped } = addProposals(character, [
+    { target: "appearance", new_text: "長髮", reason: "一樣" },
+    { target: "module", module_name: "價值觀", new_text: "誠實和自由", reason: "x" },
+  ], "t1");
+  assert.equal(added.length, 0); assert.equal(skipped.length, 2); assert.equal(updated.pending_proposals.length, 0);
+  assert.equal(addProposals(character, [{ target: "module", module_name: "我亂取的", new_text: "x", reason: "x" }], "t1").added.length, 0);
+  assert.equal(addProposals(character, [{ target: "module", module_name: "人格特質", new_text: "變得愛笑", reason: "x" }], "t1").added.length, 1);
+});
+
+test("設定提議：同一欄只看最新那筆，舊的收在 older；同意會改進設定，同一欄的一起收掉", () => {
+  let character = normalize(newCharacter("羅爾"));
+  character.profile.appearance = "長髮";
+  character = addProposals(character, [{ target: "appearance", new_text: "短髮", reason: "剪了" }], "t1", "2026-01-01T00:00:00Z").updated;
+  character = addProposals(character, [{ target: "occupation", new_text: "咖啡店店員", reason: "換工作" }], "t2", "2026-01-01T00:01:00Z").updated;
+  character = addProposals(character, [{ target: "appearance", new_text: "短髮，染成金色", reason: "又染了" }], "t3", "2026-01-01T00:02:00Z").updated;
+  const active = activeProposals(character);
+  assert.equal(active.length, 2);
+  assert.equal(active[0].target, "appearance"); assert.equal(active[0].new_text, "短髮，染成金色");
+  assert.equal(active[0].current_text, "長髮"); assert.equal(active[0].older.length, 1); assert.equal(active[0].older[0].new_text, "短髮");
+  const accepted = resolveProposal(character, active[0].proposal_id, { accept: true });
+  assert.equal(accepted.profile.appearance, "短髮，染成金色");
+  assert.deepEqual(activeProposals(accepted).map((item) => item.target), ["occupation"]);
+  const edited = resolveProposal(character, active[0].proposal_id, { accept: true, text: "短髮，金色挑染" });
+  assert.equal(edited.profile.appearance, "短髮，金色挑染");
+  const rejected = resolveProposal(character, active[1].proposal_id);
+  assert.equal(rejected.profile.occupation, ""); assert.equal(activeProposals(rejected).length, 1);
+});
+
+test("設定提議：同意空的預設模組，會建立那個模組；開關預設開著", () => {
+  let character = normalize(newCharacter("羅爾"));
+  assert.equal(character.chat_settings.proposals, true);
+  assert.equal(normalize({ ...character, chat_settings: { proposals: false } }).chat_settings.proposals, false);
+  character = addProposals(character, [{ target: "module", module_name: "價值觀", new_text: "家人第一", reason: "x" }], "t1").updated;
+  const done = resolveProposal(character, activeProposals(character)[0].proposal_id, { accept: true });
+  const module = done.modules.find((item) => item.name === "價值觀");
+  assert.equal(module.type, "values"); assert.equal(module.text, "家人第一");
+});
+
+test("設定提議：回溯會拿掉那幾句帶出的提議，更早的留著", () => {
+  let character = normalize(newCharacter("羅爾"));
+  character = addProposals(character, [{ target: "appearance", new_text: "短髮", reason: "x" }], "t1").updated;
+  character = addProposals(character, [{ target: "occupation", new_text: "店員", reason: "x" }], "t2").updated;
+  const turns = [{ id: "t1", user_message: "a", character_reply: "b", before: snapshotOf(character) }, { id: "t2", user_message: "c", character_reply: "d", before: snapshotOf(character) }];
+  const result = rewind(character, turns, "t2");
+  assert.equal(result.removedProposals, 1);
+  assert.deepEqual(result.character.pending_proposals.map((item) => item.target), ["appearance"]);
+  assert.equal(freshCopy(character).pending_proposals.length, 0);
+});
+
+test("設定提議：開著時提示詞會教 AI 怎麼提、附上還沒處理的；關著時完全不提", () => {
+  let character = normalize(newCharacter("羅爾"));
+  character = addProposals(character, [{ target: "appearance", new_text: "短髮", reason: "x" }], "t1").updated;
+  const on = buildChatPrompt(character, [], "嗨");
+  assert.match(on, /profile_proposals/); assert.match(on, /pending_profile_proposals/);
+  assert.match(on, /"pending_profile_proposals":\[\{"target":"appearance","new_text":"短髮"\}\]/);
+  assert.doesNotMatch(on, /"pending_proposals"/);
+  const off = buildChatPrompt({ ...character, chat_settings: { ...character.chat_settings, proposals: false } }, [], "嗨");
+  assert.doesNotMatch(off, /profile_proposals/); assert.doesNotMatch(off, /短髮/);
+});

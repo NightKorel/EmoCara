@@ -1,17 +1,27 @@
 // EmoCara 核心：資料整理、驗證、提示詞。
 // 由原本 Python 的 app/schemas.py、interactions.py、state_proposals.py、relationships.py、model_interface.py 改寫。
-// 規則不變：AI 只能「提案」，這裡驗證過、使用者按確認之後，才會存進角色資料。
+// 規則：AI 回覆一律先經過這裡驗證。心情、記憶通過驗證就存；角色設定（profile、modules）AI 只能「提議」，使用者同意才會改。
 (function (root) {
   "use strict";
 
   const SCHEMA_VERSION = "0.1";
-  const CHAT_CONTRACT_VERSION = "chat_turn/v0.3";
+  const CHAT_CONTRACT_VERSION = "chat_turn/v0.4";
   const MAX_MESSAGE_LENGTH = 4000;
   const MAX_REPLY_LENGTH = 6000;
   const MAX_INNER_LENGTH = 2000; // 心裡沒說出口的話，最多幾個字
   const MAX_SUMMARY_LENGTH = 500; // 近期摘要（他記得的最近經過），最多幾個字
   const MAX_MEMORY_CANDIDATES = 3;
   const MAX_MEMORY_TEXT_LENGTH = 1000;
+  // 設定提議：AI 每句最多提幾筆、每筆多長；同一欄最多留幾筆舊的；待處理幾筆以上才提醒。
+  const MAX_PROFILE_PROPOSALS = 2;
+  const MAX_PROPOSAL_TEXT_LENGTH = 4000;
+  const PROPOSAL_KEEP_PER_TARGET = 5;
+  const PROPOSAL_REMINDER = 5;
+  // AI 能提議的基本資料欄位（名字、別名、其他設定不開放）。
+  const PROPOSAL_FIELDS = {
+    appearance: "外表", occupation: "職業／身分", age: "年齡", gender: "性別", pronouns: "代名詞",
+    background: "背景與人生經歷", current_situation: "目前生活狀態",
+  };
 
   const DEFAULT_PROFILE = {
     name: "未命名角色", aliases: [], age: null, gender: null,
@@ -178,7 +188,12 @@
     result.relationships = Array.isArray(result.relationships) ? result.relationships : [];
     // 聊天設定：real_time＝現實時間開關；time_since＝打開時選「剛剛」的那一刻（之前的對話都算發生在這一刻）。
     const chatSettings = objectOr(result.chat_settings, {});
-    result.chat_settings = { real_time: chatSettings.real_time === true, time_since: typeof chatSettings.time_since === "string" ? chatSettings.time_since : null };
+    // proposals＝設定提議開關，沒寫過的角色預設開著。
+    result.chat_settings = { real_time: chatSettings.real_time === true, time_since: typeof chatSettings.time_since === "string" ? chatSettings.time_since : null, proposals: chatSettings.proposals !== false };
+    // 還沒處理的設定提議（AI 提的，使用者同意才會改進設定）。
+    result.pending_proposals = Array.isArray(result.pending_proposals)
+      ? result.pending_proposals.filter((item) => isObject(item) && typeof item.proposal_id === "string" && typeof item.target === "string" && typeof item.new_text === "string")
+      : [];
     // 聊天視窗：最後一個是目前的視窗。空的＝只有最早那個視窗（chat_first）。
     result.chats = Array.isArray(result.chats) ? result.chats.filter((chat) => isObject(chat) && typeof chat.chat_id === "string") : [];
     const metadata = objectOr(result.metadata, {});
@@ -299,8 +314,8 @@
 
   function validateChatResponse(response) {
     if (!isObject(response)) throw new Error("互動回覆必須是 JSON 物件。");
-    const keys = Object.keys(response), allowedKeys = ["reply", "state_proposal", "memory_candidates", "inner_thought", "recent_summary"];
-    if (!("reply" in response) || !("state_proposal" in response) || keys.some((key) => !allowedKeys.includes(key))) throw new Error("互動回覆只能包含 reply、state_proposal、memory_candidates、inner_thought 與 recent_summary。");
+    const keys = Object.keys(response), allowedKeys = ["reply", "state_proposal", "memory_candidates", "inner_thought", "recent_summary", "profile_proposals"];
+    if (!("reply" in response) || !("state_proposal" in response) || keys.some((key) => !allowedKeys.includes(key))) throw new Error("互動回覆只能包含 reply、state_proposal、memory_candidates、inner_thought、recent_summary 與 profile_proposals。");
     const inner = response.inner_thought ?? "";
     if (typeof inner !== "string" || inner.trim().length > MAX_INNER_LENGTH) throw new Error(`inner_thought 必須是 ${MAX_INNER_LENGTH} 個字元以內的文字。`);
     // 近期摘要：沒寫就是 null（沿用上一份）。
@@ -315,7 +330,96 @@
       recent_summary: summary === null || !summary.trim() ? null : summary.trim(),
       state_proposal: proposal === null ? null : validateStateProposal(proposal),
       memory_candidates: validateMemoryCandidates(response.memory_candidates === undefined ? [] : response.memory_candidates),
+      profile_proposals: validateProfileProposals(response.profile_proposals ?? []),
     };
+  }
+
+  // ---------- 設定提議 ----------
+  // 一筆提議：target 是基本資料的欄位名稱，或 "module"（再加 module_name）；new_text 是改完之後的完整文字。
+  function validateProfileProposal(item) {
+    if (!isObject(item)) throw new Error("每筆設定提議必須是 JSON 物件。");
+    const target = item.target, isModule = target === "module";
+    if (!isModule && !Object.prototype.hasOwnProperty.call(PROPOSAL_FIELDS, target)) throw new Error(`設定提議的 target 只能是 ${Object.keys(PROPOSAL_FIELDS).join("、")} 或 module。`);
+    const keys = isModule ? ["target", "module_name", "new_text", "reason"] : ["target", "new_text", "reason"];
+    if (!sameKeys(item, keys)) throw new Error(`設定提議只能包含 ${keys.join("、")}。`);
+    const clean = { target };
+    if (isModule) {
+      if (typeof item.module_name !== "string" || !item.module_name.trim() || item.module_name.trim().length > 200) throw new Error("設定提議的 module_name 必須是 1 至 200 個字元的文字。");
+      clean.module_name = item.module_name.trim();
+    }
+    if (typeof item.new_text !== "string" || !item.new_text.trim() || item.new_text.trim().length > MAX_PROPOSAL_TEXT_LENGTH) throw new Error(`設定提議的 new_text 必須是 1 至 ${MAX_PROPOSAL_TEXT_LENGTH} 個字元的文字。`);
+    if (typeof item.reason !== "string" || !item.reason.trim() || item.reason.trim().length > 1000) throw new Error("設定提議的 reason 必須是 1 至 1000 個字元的文字。");
+    clean.new_text = item.new_text.trim(); clean.reason = item.reason.trim();
+    return clean;
+  }
+  const proposalKey = (item) => (item.target === "module" ? `module:${item.module_name}` : item.target);
+  function validateProfileProposals(items) {
+    if (!Array.isArray(items) || items.length > MAX_PROFILE_PROPOSALS) throw new Error(`profile_proposals 必須是至多 ${MAX_PROFILE_PROPOSALS} 筆的陣列。`);
+    const clean = items.map(validateProfileProposal);
+    if (new Set(clean.map(proposalKey)).size !== clean.length) throw new Error("同一欄不能在同一句提議兩次。");
+    return clean;
+  }
+  const presetTypeByName = (name) => Object.keys(PRESET_MODULES).find((type) => type !== "custom" && PRESET_MODULES[type] === name) || null;
+  const findModule = (character, name) => (character.modules || []).find((module) => isObject(module) && String(module.name || "").trim() === name);
+  function proposalLabel(item) { return item.target === "module" ? `模組：${item.module_name}` : PROPOSAL_FIELDS[item.target] || item.target; }
+  // 那一欄現在寫什麼。
+  function currentTextFor(character, item) {
+    if (item.target === "module") { const module = findModule(character, item.module_name); return module && typeof module.text === "string" ? module.text : ""; }
+    const value = character.profile?.[item.target]; return value === null || value === undefined ? "" : String(value);
+  }
+  // 能不能提：模組要是已經有的（而且開著，AI 才看得到）或預設模組；跟現在一模一樣的不算。
+  function proposalProblem(character, item) {
+    if (item.target === "module") {
+      const module = findModule(character, item.module_name);
+      if (module && module.enabled === false) return "這個模組關著";
+      if (!module && !presetTypeByName(item.module_name)) return "沒有這個模組";
+    }
+    if (currentTextFor(character, item).trim() === item.new_text) return "跟現在一樣";
+    return null;
+  }
+  const newTurnId = () => `turn_${hexId()}`;
+  // 把這句的提議放進待處理清單；同一欄只留最近 PROPOSAL_KEEP_PER_TARGET 筆。
+  function addProposals(character, items, turnId, now = timestamp()) {
+    const updated = clone(character), added = [], skipped = [];
+    if (!Array.isArray(updated.pending_proposals)) updated.pending_proposals = [];
+    for (const item of validateProfileProposals(items || [])) {
+      if (proposalProblem(updated, item)) { skipped.push(item); continue; }
+      const record = { proposal_id: `proposal_${hexId()}`, ...item, turn_id: turnId || null, created_at: now };
+      updated.pending_proposals.push(record); added.push(record);
+      const key = proposalKey(item), same = updated.pending_proposals.filter((p) => proposalKey(p) === key);
+      if (same.length > PROPOSAL_KEEP_PER_TARGET) { const drop = new Set(same.slice(0, same.length - PROPOSAL_KEEP_PER_TARGET).map((p) => p.proposal_id)); updated.pending_proposals = updated.pending_proposals.filter((p) => !drop.has(p.proposal_id)); }
+    }
+    return { updated, added, skipped };
+  }
+  // 待處理清單：每一欄只看最新那筆，舊的放在 older（新的在前）。最新提的欄位排最上面。
+  function activeProposals(character) {
+    const list = character.pending_proposals || [], groups = new Map();
+    list.forEach((item) => { const key = proposalKey(item); if (!groups.has(key)) groups.set(key, []); groups.get(key).push(item); });
+    const active = [...groups.values()].map((items) => { const latest = items[items.length - 1]; return { ...latest, label: proposalLabel(latest), current_text: currentTextFor(character, latest), older: items.slice(0, -1).reverse(), order: list.indexOf(latest) }; });
+    return active.sort((a, b) => b.order - a.order).map(({ order, ...item }) => item);
+  }
+  // 處理一筆提議：accept＝同意（text 可以是修過的文字），否則就是不要。同一欄的舊提議一起收掉。
+  function resolveProposal(character, proposalId, { accept = false, text } = {}) {
+    const updated = clone(character);
+    const item = (updated.pending_proposals || []).find((p) => p.proposal_id === proposalId);
+    if (!item) throw new Error("找不到這筆提議，可能已經處理過了。");
+    if (accept) {
+      const value = String(text ?? item.new_text).trim();
+      if (value.length > MAX_PROPOSAL_TEXT_LENGTH) throw new Error(`文字不能超過 ${MAX_PROPOSAL_TEXT_LENGTH} 個字元。`);
+      if (item.target === "module") {
+        const module = findModule(updated, item.module_name);
+        if (module) module.text = value;
+        else {
+          const type = presetTypeByName(item.module_name);
+          if (!type) throw new Error(`找不到「${item.module_name}」這個模組了。`);
+          const created = newModule(type); created.text = value; updated.modules.push(created);
+        }
+      } else if (["age", "gender", "pronouns"].includes(item.target)) updated.profile[item.target] = value || null;
+      else updated.profile[item.target] = value;
+    }
+    const key = proposalKey(item);
+    updated.pending_proposals = updated.pending_proposals.filter((p) => proposalKey(p) !== key);
+    return normalize(updated);
   }
 
   // 回傳：更新後的角色（還沒存）、驗證過的回覆、要存的記憶。
@@ -389,7 +493,7 @@
     const copy = normalize(clone(character), { generateId: true });
     const now = timestamp();
     copy.profile.name = `${character.profile?.name || "未命名角色"}（新的開始）`;
-    copy.state = clone(DEFAULT_STATE); copy.memories = []; copy.chats = [];
+    copy.state = clone(DEFAULT_STATE); copy.memories = []; copy.chats = []; copy.pending_proposals = [];
     copy.chat_settings = { ...copy.chat_settings, time_since: null };
     copy.metadata = { ...copy.metadata, created_at: now, updated_at: now, import_source: null };
     return copy;
@@ -418,7 +522,10 @@
     const remaining = turns.filter((turn, i) => !(i >= index && turnChatId(turn) === chatId));
     const updated = clone(character);
     if (kind === "full") { updated.state = clone(target.before.state); updated.memories = clone(target.before.memories); }
-    return { character: updated, turns: remaining, removed: removed.length, message: target.user_message, kind };
+    // 這幾句帶出、還沒處理的設定提議一起拿掉（已經同意的不會退回去）。
+    const removedIds = new Set(removed.map((turn) => turn.id)), proposals = Array.isArray(updated.pending_proposals) ? updated.pending_proposals : [];
+    updated.pending_proposals = proposals.filter((item) => !removedIds.has(item.turn_id));
+    return { character: updated, turns: remaining, removed: removed.length, message: target.user_message, kind, removedProposals: proposals.length - updated.pending_proposals.length };
   }
 
   // ---------- 近期摘要 ----------
@@ -470,9 +577,12 @@
   const SPOILER_LINE = "以下是給程式看的資料，含劇透，請直接按複製";
   function buildChatPrompt(character, recentTurns, userMessage, { now = timestamp(), summary = null, manual = false } = {}) {
     const realTime = character.chat_settings?.real_time === true;
+    const proposalsOn = character.chat_settings?.proposals !== false;
     const view = characterForPrompt(character);
-    delete view.chats; delete view.chat_settings;
+    delete view.chats; delete view.chat_settings; delete view.pending_proposals;
     const data = { character: realTime ? view : withoutTimes(view) };
+    const pending = proposalsOn ? activeProposals(character) : [];
+    if (pending.length) data.pending_profile_proposals = pending.map((item) => { const out = { target: item.target }; if (item.target === "module") out.module_name = item.module_name; out.new_text = item.new_text; return out; });
     if (summary?.from === "this_chat") data.recent_summary = summary.text;
     if (summary?.from === "previous_chat") data.previous_chat_summary = summary.text;
     data.recent_turns = turnsForPrompt(character, recentTurns); data.user_message = userMessage;
@@ -485,7 +595,7 @@
 
 你是角色互動模擬器。請以角色自己的觀點、界線和語氣回覆使用者，
 不得臆測輸入資料沒有的事實，也不必迎合使用者。你不是資料庫，不能修改角色的
-profile、modules、memories、relationships 或 metadata。
+profile、modules、memories、relationships 或 metadata。${proposalsOn ? "\n角色設定（profile 和 modules）如果因為這段對話真的改變了，只能用 profile_proposals 提議，使用者同意才會改。" : ""}
 
 ${manual ? `回覆的第一行只寫「${SPOILER_LINE}」這一句，接著把 JSON 物件整個放在一個 \`\`\`json 程式碼框裡，程式碼框外面不要再寫任何字（使用者不想被劇透角色的心裡話）。JSON 格式必須是：` : "只回傳 JSON 物件，不要 Markdown 或額外文字。格式必須是："}
 {
@@ -503,7 +613,10 @@ ${manual ? `回覆的第一行只寫「${SPOILER_LINE}」這一句，接著把 J
   },
   "memory_candidates": [
     {"summary": "值得保存的互動事實或感受", "importance": "ordinary、important 或 core", "reason": "為何值得保留"}
-  ]
+  ]${proposalsOn ? `,
+  "profile_proposals": [
+    {"target": "${Object.keys(PROPOSAL_FIELDS).join("、")} 其中一個，或 module", "module_name": "只有 target 是 module 才寫這一欄：模組名稱", "new_text": "那一欄改完之後的完整文字", "reason": "為什麼要改"}
+  ]` : ""}
 }
 reply 只放角色真的說出口的話。角色心裡的想法、誤會、戒心、沒說出口的感受放在 inner_thought，
 使用者看不到這一欄，所以 reply 不必替它解釋；角色可以表面若無其事，心裡另有想法。沒有特別的想法就填 ""。
@@ -518,7 +631,13 @@ state_proposal 只在這次對話確有足夠依據的心理數值變化時提�
 memory_candidates 最多三筆，只記錄本次對話明確出現且有長期意義的事；沒有則回傳 []。
 這些只是候選項，使用者可能不選擇保存，且不得將它們當作已保存記憶。
 角色資料中的 memory_settings 是各層級的筆數與每筆文字上限；候選項必須遵守它。
-
+${proposalsOn ? `profile_proposals 只在這次對話裡明確發生了會改變角色設定的事時提出（例如外表變了、換了工作、處境變了、對某件事的想法真的變了），
+最多 ${MAX_PROFILE_PROPOSALS} 筆，每一欄最多一筆；沒有就回傳 []。不能改名字。
+new_text 要寫那一欄改完之後的完整內容：原本還成立的部分要保留，不是只寫新增的那一句。
+模組只能用角色資料 modules 裡已有的名稱，或這些預設模組：${Object.keys(PRESET_MODULES).filter((type) => type !== "custom").map((type) => PRESET_MODULES[type]).join("、")}。
+輸入資料的 pending_profile_proposals 是之前提過、使用者還沒處理的提議（使用者可能一直不處理，這很正常）：
+同一件事不要再提；真的要修改它，就用同一個 target 再提一次完整的新版本。
+` : ""}
 輸入資料：
 ${supplied}`;
   }
@@ -546,6 +665,7 @@ ${supplied}`;
     normalize, normalizeMemorySettings, validateStateProposal, applyStateProposal,
     validateUserMessage, validateMemoryCandidates, validateMemoryCapacity, validateChatResponse, applyChatResponse,
     validateRelationship, characterForPrompt, buildChatPrompt, parseJsonObjectText, memoryKey,
+    MAX_PROFILE_PROPOSALS, PROPOSAL_FIELDS, PROPOSAL_REMINDER, validateProfileProposals, addProposals, activeProposals, resolveProposal, newTurnId,
     MAX_SUMMARY_LENGTH, chatSummary, summaryForPrompt, fittingMemories,
     FIRST_CHAT_ID, REWIND_LIMIT, currentChatId, turnChatId, turnsInChat, startNewChat, freshCopy,
     snapshotOf, trimSnapshots, rewindKind, rewind, describeTime, withoutTimes, turnsForPrompt,
