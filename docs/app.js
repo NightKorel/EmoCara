@@ -355,5 +355,15 @@ $("#copy-json").onclick = () => copyText(JSON.stringify(current, null, 2), "完�
 $("#open-settings").onclick = openSettings; $("#settings-form").onsubmit = saveSettings;
 $("#chat-form").onsubmit = generateChat; $("#chat-mode").onchange = renderChat; $("#copy-chat-prompt").onclick = copyChatPrompt; $("#parse-chat-response").onclick = parseManualChatResponse; $("#apply-chat-turn").onclick = applyPendingChat; $("#discard-chat-preview").onclick = discardPendingChat;
 document.querySelectorAll(".tab").forEach((button) => { button.onclick = () => showTab(button.dataset.tab); });
+// 展開折起來的區塊時，如果展開的內容跑到畫面外面（例如在頁尾），就捲過去讓它看得到。
+document.addEventListener("toggle", (event) => {
+  const box = event.target;
+  if (!(box instanceof HTMLDetailsElement) || !box.open) return;
+  requestAnimationFrame(() => {
+    const rect = box.getBoundingClientRect();
+    if (rect.top >= 0 && rect.bottom <= window.innerHeight) return;
+    box.scrollIntoView({ behavior: "smooth", block: rect.height > window.innerHeight ? "start" : "nearest" });
+  });
+}, true);
 window.addEventListener("beforeunload", (event) => { if (characterDirty) event.preventDefault(); });
 start();
