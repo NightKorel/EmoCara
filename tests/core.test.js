@@ -464,3 +464,16 @@ test("角卡：看不出是角卡的文字會被擋", () => {
   assert.throws(() => Core.parseCard("今天天氣很好"), /看不出這是角卡/);
   assert.throws(() => Core.parseCard("   "), /空的/);
 });
+
+test("自動存記憶：已經有一模一樣內容的記憶就不再存，也不算記憶滿了", () => {
+  const character = normalize(newCharacter("羅爾"));
+  character.memories.push(Core.newMemory("你來找他", "ordinary", "第一次"));
+  const { kept, skipped, duplicates } = Core.fittingMemories(character, [{ summary: "你來找他", importance: "important", reason: "又一次" }, { summary: "你帶了貓", importance: "ordinary", reason: "x" }]);
+  assert.deepEqual(kept.map((item) => item.summary), ["你帶了貓"]);
+  assert.equal(skipped.length, 0); assert.equal(duplicates.length, 1);
+});
+
+test("送給 AI 的舊對話不附上當時想記住的事（已經在角色資料的記憶裡）", () => {
+  const view = Core.turnsForPrompt(normalize(newCharacter("羅爾")), [{ user_message: "a", character_reply: "b", memory_candidates: [{ summary: "x", importance: "ordinary", reason: "y" }] }]);
+  assert.equal(view[0].memory_candidates, undefined);
+});

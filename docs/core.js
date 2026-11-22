@@ -302,16 +302,19 @@
   }
 
   // 自動存記憶用：挑出還放得下的（那一層滿了、或字太多的就不存），不會擠掉舊記憶。
+  // 已經有一模一樣內容的記憶也不存（放進 duplicates，不算「記憶滿了」）。
   function fittingMemories(character, candidates) {
     const settings = normalizeMemorySettings(character.memory_settings);
     const existing = Array.isArray(character.memories) ? character.memories : [];
-    const kept = [], skipped = [];
+    const kept = [], skipped = [], duplicates = [];
+    const known = new Set(existing.filter(isObject).map((memory) => String(memory.summary ?? "").trim()));
     for (const item of validateMemoryCandidates(candidates || [])) {
+      if (known.has(item.summary)) { duplicates.push(item); continue; }
       const tier = settings[item.importance];
       const count = existing.filter((memory) => isObject(memory) && memory.importance === item.importance).length + kept.filter((memory) => memory.importance === item.importance).length;
       if (count >= tier.max_items || item.summary.length + item.reason.length > tier.max_chars) skipped.push(item); else kept.push(item);
     }
-    return { kept, skipped };
+    return { kept, skipped, duplicates };
   }
 
   function validateChatResponse(response) {
@@ -658,7 +661,6 @@
       const view = { user_message: turn.user_message, character_reply: turn.character_reply };
       if (turn.scene) view.scene = turn.scene;
       if (turn.inner_thought !== undefined) view.inner_thought = turn.inner_thought;
-      if (turn.memory_candidates?.length) view.memory_candidates = turn.memory_candidates;
       if (settings.real_time && turn.created_at) {
         const at = settings.time_since && turn.created_at < settings.time_since ? settings.time_since : turn.created_at;
         view.time = describeTime(at);

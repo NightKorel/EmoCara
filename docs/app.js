@@ -564,7 +564,7 @@ function toggleChatPrompt() { const box = $("#manual-chat-prompt"); box.hidden =
 function saveReply(userMessage, rawResponse) {
   try {
     const message = Core.validateUserMessage(userMessage), clean = Core.validateChatResponse(rawResponse);
-    const { kept, skipped } = Core.fittingMemories(current, clean.memory_candidates);
+    const { kept, skipped } = Core.fittingMemories(current, clean.memory_candidates); // 一模一樣的舊記憶已經有了就不存，也不提醒
     const { updated, response, selected } = Core.applyChatResponse(current, clean, kept);
     const chatId = Core.currentChatId(current), before = Core.snapshotOf(current), turnId = Core.newTurnId();
     // 設定提議開著才收；放進角色頁的待處理清單，同意了才會改設定。
@@ -608,18 +608,9 @@ function applyTheme() {
   $("#theme-toggle").textContent = theme === "dark" ? "☀ 換成淺色" : "☾ 換成深色";
 }
 // ---------- 主題色（色相環，只換色相；記在這台裝置。沒選過＝原本的青綠色） ----------
-// 每個主色：[色相差, 飽和度, 亮度]，色相差是跟主色比，照原本配色算出來的，選回 176 就跟預設幾乎一樣。
-const HUE_TONES = {
-  light: { "--accent": [0, 39, 35], "--accent-dark": [1, 47, 25], "--soft": [-14, 24, 92], "--c213b3d": [9, 30, 18] },
-  dark: { "--accent": [0, 39, 40], "--accent-dark": [-3, 45, 69], "--soft": [-1, 30, 17], "--c213b3d": [9, 25, 11], "--accent-hover": [0, 35, 48] },
-};
+// 套色的函式在 index.html 開頭（打開網頁時先套上，免得閃一下），這裡共用。
 const DEFAULT_HUE = 176;
-function applyHue(hue, theme = document.documentElement.dataset.theme) {
-  const root = document.documentElement.style;
-  Object.keys({ ...HUE_TONES.light, ...HUE_TONES.dark }).forEach((name) => root.removeProperty(name));
-  if (!Number.isFinite(hue)) return;
-  for (const [name, [shift, s, l]] of Object.entries(HUE_TONES[theme] || HUE_TONES.dark)) root.setProperty(name, `hsl(${(((hue + shift) % 360) + 360) % 360} ${s}% ${l}%)`);
-}
+function applyHue(hue, theme = document.documentElement.dataset.theme) { window.EmoApplyHue(hue, theme); }
 function currentHue() { const hue = Store.getSettings().hue; return Number.isFinite(hue) ? hue : DEFAULT_HUE; }
 function placeHueKnob(hue) {
   const ring = $("#hue-ring"), radius = ring.clientWidth / 2 - 17, angle = (hue * Math.PI) / 180;

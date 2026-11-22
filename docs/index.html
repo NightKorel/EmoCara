@@ -4,17 +4,31 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>情緒模擬器｜角色檔案</title>
-    <link rel="stylesheet" href="styles.css?v=0.1.22" />
+    <link rel="stylesheet" href="styles.css?v=0.1.23" />
     <script>
       // 先套上深淺色，免得打開時先閃一下白色。預設深色。
       try { const s = JSON.parse(localStorage.getItem("emocara:settings") || "{}"); document.documentElement.dataset.theme = s.theme === "light" ? "light" : "dark"; }
       catch { document.documentElement.dataset.theme = "dark"; }
+      // 主題色（色相環）也先套上，免得先閃一下原本的青綠色。app.js 換色時也用這個函式。
+      // 每個主色：[色相差, 飽和度, 亮度]，照原本配色算出來的，選回 176 就跟預設幾乎一樣。
+      window.EmoHueTones = {
+        light: { "--accent": [0, 39, 35], "--accent-dark": [1, 47, 25], "--soft": [-14, 24, 92], "--c213b3d": [9, 30, 18] },
+        dark: { "--accent": [0, 39, 40], "--accent-dark": [-3, 45, 69], "--soft": [-1, 30, 17], "--c213b3d": [9, 25, 11], "--accent-hover": [0, 35, 48] },
+      };
+      window.EmoApplyHue = function (hue, theme) {
+        const tones = window.EmoHueTones, root = document.documentElement.style;
+        theme = theme || document.documentElement.dataset.theme;
+        Object.keys(Object.assign({}, tones.light, tones.dark)).forEach(function (name) { root.removeProperty(name); });
+        if (!Number.isFinite(hue)) return;
+        Object.entries(tones[theme] || tones.dark).forEach(function ([name, [shift, s, l]]) { root.setProperty(name, "hsl(" + ((((hue + shift) % 360) + 360) % 360) + " " + s + "% " + l + "%)"); });
+      };
+      try { window.EmoApplyHue(JSON.parse(localStorage.getItem("emocara:settings") || "{}").hue); } catch { /* 讀不到就用預設色 */ }
     </script>
   </head>
   <body>
     <div class="app-shell">
       <aside class="sidebar">
-        <div class="brand"><span class="spark">✦</span><div><strong>情緒模擬器</strong><small>角色檔案 v0.1.22</small></div></div>
+        <div class="brand"><span class="spark">✦</span><div><strong>情緒模擬器</strong><small>角色檔案 v0.1.23</small></div></div>
         <button id="new-character" class="primary wide">＋ 新增角色</button>
         <label class="import-button wide">⇧ 匯入角色<input id="import-file" type="file" accept="application/json,.json,text/plain,.txt" /></label>
         <button id="card-open" class="secondary wide settings-button" type="button">▤ 角卡</button>
@@ -180,9 +194,9 @@
       <label class="field">Gemini 模型名稱<input name="gemini_model" placeholder="gemini-3.8-flash" /></label>
       <p class="muted">只用手動模式的話，這裡可以不填。</p>
       <div class="dialog-actions"><button value="cancel" class="secondary">取消</button><button value="default" class="primary">儲存</button></div></form></dialog>
-    <script src="core.js?v=0.1.22"></script>
-    <script src="store.js?v=0.1.22"></script>
-    <script src="ai.js?v=0.1.22"></script>
-    <script src="app.js?v=0.1.22"></script>
+    <script src="core.js?v=0.1.23"></script>
+    <script src="store.js?v=0.1.23"></script>
+    <script src="ai.js?v=0.1.23"></script>
+    <script src="app.js?v=0.1.23"></script>
   </body>
 </html>
