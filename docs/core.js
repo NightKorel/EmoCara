@@ -481,6 +481,16 @@
     return view;
   }
 
+  // 送給 AI 前再瘦身：拿掉 AI 用不到的（編號、版本、系統時間、聊天設定）和空白的欄位。
+  const isEmpty = (value) => value === null || value === undefined || value === "" || (Array.isArray(value) && !value.length) || (isObject(value) && !Object.keys(value).length);
+  function compactForPrompt(view) {
+    for (const key of ["schema_version", "character_id", "metadata", "chats", "chat_settings", "pending_proposals"]) delete view[key];
+    if (isObject(view.profile)) for (const [key, value] of Object.entries(view.profile)) if (isEmpty(value)) delete view.profile[key];
+    if (isObject(view.state)) { for (const key of ["emotions", "custom_metrics"]) if (isEmpty(view.state[key])) delete view.state[key]; if (view.state.last_updated === null) delete view.state.last_updated; }
+    for (const key of ["modules", "memories", "relationships"]) if (isEmpty(view[key])) delete view[key];
+    return view;
+  }
+
   // ---------- 聊天視窗 ----------
   const FIRST_CHAT_ID = "chat_first";
   const REWIND_LIMIT = 30; // 最近幾句可以「從這句重來」
@@ -570,7 +580,6 @@
       const view = { user_message: turn.user_message, character_reply: turn.character_reply };
       if (turn.scene) view.scene = turn.scene;
       if (turn.inner_thought !== undefined) view.inner_thought = turn.inner_thought;
-      if (turn.state_proposal) view.state_proposal = turn.state_proposal;
       if (turn.memory_candidates?.length) view.memory_candidates = turn.memory_candidates;
       if (settings.real_time && turn.created_at) {
         const at = settings.time_since && turn.created_at < settings.time_since ? settings.time_since : turn.created_at;
@@ -584,8 +593,7 @@
   function buildChatPrompt(character, recentTurns, userMessage, { now = timestamp(), summary = null, manual = false } = {}) {
     const realTime = character.chat_settings?.real_time === true;
     const proposalsOn = character.chat_settings?.proposals !== false, videoOn = character.chat_settings?.video !== false;
-    const view = characterForPrompt(character);
-    delete view.chats; delete view.chat_settings; delete view.pending_proposals;
+    const view = compactForPrompt(characterForPrompt(character));
     const data = { character: realTime ? view : withoutTimes(view) };
     const pending = proposalsOn ? activeProposals(character) : [];
     if (pending.length) data.pending_profile_proposals = pending.map((item) => { const out = { target: item.target }; if (item.target === "module") out.module_name = item.module_name; out.new_text = item.new_text; return out; });
@@ -600,8 +608,7 @@
     return `${timeRule}
 
 你是角色互動模擬器。請以角色自己的觀點、界線和語氣回覆使用者，
-不得臆測輸入資料沒有的事實，也不必迎合使用者。你不是資料庫，不能修改角色的
-profile、modules、memories、relationships 或 metadata。${proposalsOn ? "\n角色設定（profile 和 modules）如果因為這段對話真的改變了，只能用 profile_proposals 提議，使用者同意才會改。" : ""}
+不得臆測輸入資料沒有的事實，也不必迎合使用者。你不能直接修改角色資料${proposalsOn ? "；角色設定如果因為這段對話真的改變了，只能用 profile_proposals 提議，使用者同意才會改" : ""}。
 
 ${manual ? `回覆的第一行只寫「${SPOILER_LINE}」這一句，接著把 JSON 物件整個放在一個 \`\`\`json 程式碼框裡，程式碼框外面不要再寫任何字（使用者不想被劇透角色的心裡話）。JSON 格式必須是：` : "只回傳 JSON 物件，不要 Markdown 或額外文字。格式必須是："}
 {
@@ -633,21 +640,16 @@ scene 只寫看得到的，不寫角色心裡在想什麼（那些放 inner_thou
 scene 不要重複 reply 說的話。recent_turns 裡的 scene 是之前的畫面，請讓場景、穿著、手上的東西前後接得上。
 ` : ""}recent_turns 裡每一回合的 inner_thought 是角色當時沒說出口的想法；請延續這些想法（例如還沒解開的誤會），
 除非角色自己決定說出來，否則不要在 reply 裡直接講出 inner_thought 的內容。
-recent_summary 是角色記得的最近經過，用角色自己的角度寫（可以帶著他的感受和誤會，不必是客觀紀錄），${MAX_SUMMARY_LENGTH} 字以內。
-請把輸入資料的 recent_summary（或 previous_chat_summary：上一段聊天結束時他記得的經過）和這次對話合在一起更新。
-recent_turns 只會保留最近幾句，最前面的幾句很快就會看不到，裡面重要的內容要濃縮進 recent_summary。
-真正長期重要的事，另外用 memory_candidates 提出。
-state_proposal 只在這次對話確有足夠依據的心理數值變化時提出；否則填 null。
-即使提出提案，它也必須等待程式驗證與使用者確認才可能保存。
-memory_candidates 最多三筆，只記錄本次對話明確出現且有長期意義的事；沒有則回傳 []。
-這些只是候選項，使用者可能不選擇保存，且不得將它們當作已保存記憶。
-角色資料中的 memory_settings 是各層級的筆數與每筆文字上限；候選項必須遵守它。
-${proposalsOn ? `profile_proposals 只在這次對話裡明確發生了會改變角色設定的事時提出（例如外表變了、換了工作、處境變了、對某件事的想法真的變了），
-最多 ${MAX_PROFILE_PROPOSALS} 筆，每一欄最多一筆；沒有就回傳 []。不能改名字。
-new_text 要寫那一欄改完之後的完整內容：原本還成立的部分要保留，不是只寫新增的那一句。
-模組只能用角色資料 modules 裡已有的名稱，或這些預設模組：${Object.keys(PRESET_MODULES).filter((type) => type !== "custom").map((type) => PRESET_MODULES[type]).join("、")}。
-輸入資料的 pending_profile_proposals 是之前提過、使用者還沒處理的提議（使用者可能一直不處理，這很正常）：
-同一件事不要再提；真的要修改它，就用同一個 target 再提一次完整的新版本。
+recent_summary 是角色用自己的角度記得的最近經過（可以帶著感受和誤會），${MAX_SUMMARY_LENGTH} 字以內。
+把輸入資料的 recent_summary（或 previous_chat_summary：上一段聊天結束時的經過）和這次對話合起來更新；
+recent_turns 只留最近幾句，快看不到的重要內容要濃縮進來。長期重要的事另外用 memory_candidates 提出。
+state_proposal 只在這次對話確實讓心理數值有變化時提出；否則填 null。
+memory_candidates 最多三筆，只記本次對話明確出現、有長期意義的事；沒有就回傳 []。
+角色資料的 memory_settings 是各層級的筆數與每筆字數上限，要遵守；放不下的不會存。
+${proposalsOn ? `profile_proposals：這次對話明確發生了會改變設定的事（外表變了、換工作、處境變了、想法真的變了）才提，
+最多 ${MAX_PROFILE_PROPOSALS} 筆、每欄一筆，沒有就回傳 []，不能改名字。new_text 寫那一欄改完後的完整內容，原本還成立的要保留。
+模組只能用 modules 裡已有的名稱，或這些預設模組：${Object.keys(PRESET_MODULES).filter((type) => type !== "custom").map((type) => PRESET_MODULES[type]).join("、")}。
+pending_profile_proposals 是之前提過、使用者還沒處理的提議（一直不處理很正常）：同一件事不要再提，要修改就用同一個 target 提完整的新版本。
 ` : ""}
 輸入資料：
 ${supplied}`;
