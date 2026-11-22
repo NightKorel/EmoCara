@@ -454,7 +454,8 @@
     });
   }
 
-  function buildChatPrompt(character, recentTurns, userMessage, { now = timestamp(), summary = null } = {}) {
+  const SPOILER_LINE = "以下是給程式看的資料，含劇透，請直接按複製";
+  function buildChatPrompt(character, recentTurns, userMessage, { now = timestamp(), summary = null, manual = false } = {}) {
     const realTime = character.chat_settings?.real_time === true;
     const view = characterForPrompt(character);
     delete view.chats; delete view.chat_settings;
@@ -473,7 +474,7 @@
 不得臆測輸入資料沒有的事實，也不必迎合使用者。你不是資料庫，不能修改角色的
 profile、modules、memories、relationships 或 metadata。
 
-只回傳 JSON 物件，不要 Markdown 或額外文字。格式必須是：
+${manual ? `回覆的第一行只寫「${SPOILER_LINE}」這一句，接著把 JSON 物件整個放在一個 \`\`\`json 程式碼框裡，程式碼框外面不要再寫任何字（使用者不想被劇透角色的心裡話）。JSON 格式必須是：` : "只回傳 JSON 物件，不要 Markdown 或額外文字。格式必須是："}
 {
   "reply": "角色對使用者說的話",
   "inner_thought": "角色心裡想、但沒有說出口的話",
@@ -510,15 +511,17 @@ ${supplied}`;
   }
 
   // 解析 AI 回傳的 JSON；網頁版 AI 常用 ```json 包起來，也接受。
+  // 也接受前面多一行「含劇透」提示、或整段回覆連程式碼框一起複製的情況。
   function parseJsonObjectText(text) {
     if (typeof text !== "string" || !text.trim()) throw new Error("沒有收到 AI 的回覆文字。");
-    let candidate = text.trim();
-    if (candidate.startsWith("```") && candidate.endsWith("```")) {
-      const lines = candidate.split(/\r?\n/);
-      if (lines.length >= 3) candidate = lines.slice(1, -1).join("\n").trim();
-    }
-    let value;
-    try { value = JSON.parse(candidate); } catch { throw new Error("AI 的回覆不是有效的 JSON。請確認整段都有複製到。"); }
+    const trimmed = text.trim(), candidates = [trimmed];
+    const fence = trimmed.match(/```[a-zA-Z]*\s*\n([\s\S]*?)\n?\s*```/);
+    if (fence) candidates.push(fence[1].trim());
+    const first = trimmed.indexOf("{"), last = trimmed.lastIndexOf("}");
+    if (first !== -1 && last > first) candidates.push(trimmed.slice(first, last + 1));
+    let value, parsed = false;
+    for (const candidate of candidates) { try { value = JSON.parse(candidate); parsed = true; break; } catch { /* 換下一種讀法 */ } }
+    if (!parsed) throw new Error("AI 的回覆不是有效的 JSON。請確認整段都有複製到。");
     if (!isObject(value)) throw new Error("AI 的回覆必須是一個 JSON 物件（用 { } 包起來）。");
     return value;
   }

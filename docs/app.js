@@ -270,7 +270,7 @@ function renderObserver() {
 
 // ---------- 聊天 ----------
 // 一句話的流程：送出 → 等回覆（pendingMessage）→ 回覆出來等你按確認（pendingChat）→ 確認才存。
-let pendingMessage = null, waitingReply = false, scrollChatToEnd = true, viewingChatId = null, openRewind = null;
+let pendingMessage = null, waitingReply = false, waitingNote = "", geminiFailure = null, scrollChatToEnd = true, viewingChatId = null, openRewind = null;
 function viewedChatId() { return viewingChatId || Core.currentChatId(current); }
 function viewingOldChat() { return Boolean(current && viewingChatId && viewingChatId !== Core.currentChatId(current)); }
 function refreshChatTurns() { chatTurns = current ? Core.turnsInChat(Store.allTurns(current.character_id), viewedChatId()).slice(-30) : []; }
@@ -281,7 +281,7 @@ function shortTime(iso) {
   if (d.toDateString() === now.toDateString()) return hm;
   return d.getFullYear() === now.getFullYear() ? `${d.getMonth() + 1}/${d.getDate()} ${hm}` : `${d.getFullYear()}/${d.getMonth() + 1}/${d.getDate()} ${hm}`;
 }
-function resetPendingChat() { openPeeks.delete("pending"); openRewind = null; pendingChat = null; pendingMessage = null; waitingReply = false; }
+function resetPendingChat() { geminiFailure = null; waitingNote = ""; openPeeks.delete("pending"); openRewind = null; pendingChat = null; pendingMessage = null; waitingReply = false; }
 function geminiSettings() { const s = Store.getSettings(); return { apiKey: s.gemini_api_key || "", model: s.gemini_model || AI.DEFAULT_GEMINI_MODEL }; }
 function el(tag, className, text) { const node = document.createElement(tag); if (className) node.className = className; if (text !== undefined) node.textContent = text; return node; }
 function bubble(side, text, extraClass = "") { const row = el("div", `chat-row ${side} ${extraClass}`.trim()); row.append(el("div", "chat-bubble", text)); return row; }
@@ -346,7 +346,14 @@ function renderChat() {
   });
   const old = viewingOldChat();
   if (pendingMessage && !old) history.append(bubble("me", pendingMessage, "pending"));
-  if (waitingReply && !old) history.append(bubble("them", "……", "typing"));
+  if (waitingReply && !old) history.append(bubble("them", waitingNote || "……", "typing"));
+  if (geminiFailure && pendingMessage && !old) {
+    const box = el("div", "gemini-failed"); box.append(el("p", "", geminiFailure));
+    const actions = el("div", "chat-confirm-actions");
+    const cancel = el("button", "secondary small-button", "取消這句"); cancel.type = "button"; cancel.onclick = discardPendingChat;
+    const manualButton = el("button", "primary small-button", "改用手動"); manualButton.type = "button"; manualButton.onclick = switchToManual;
+    actions.append(cancel, manualButton); box.append(actions); history.append(box);
+  }
   if (pendingChat && !old) { const row = bubble("them", pendingChat.response.reply, "pending"); row.append(pendingBox()); history.append(row); }
   if (scrollChatToEnd) history.scrollTop = history.scrollHeight;
   scrollChatToEnd = true;
@@ -359,9 +366,20 @@ function renderChat() {
   $("#model-status").classList.toggle("ready", manual || ready);
   $("#chat-generate").disabled = waitingReply;
 }
-function chatPrompt(userMessage) {
+function chatPrompt(userMessage, manual = false) {
   const all = Store.allTurns(current.character_id);
-  return Core.buildChatPrompt(current, Core.turnsInChat(all, Core.currentChatId(current)).slice(-12), userMessage, { summary: Core.summaryForPrompt(current, all) });
+  return Core.buildChatPrompt(current, Core.turnsInChat(all, Core.currentChatId(current)).slice(-12), userMessage, { summary: Core.summaryForPrompt(current, all), manual });
+}
+// Gemini 失敗時：剛剛那句直接換成手動流程，不用重打。
+function fillManualPrompt() { $("#paste-help").hidden = true; $("#manual-chat-prompt").value = chatPrompt(pendingMessage, true); $("#manual-chat-response").value = ""; }
+function switchToManual() {
+  if (!pendingMessage) return;
+  $("#chat-mode").value = "manual"; geminiFailure = null; fillManualPrompt(); renderChat();
+  toast("換成手動了：按「複製提示詞」，貼給網頁上的 AI。");
+}
+function changeChatMode() {
+  if ($("#chat-mode").value === "manual" && pendingMessage && !pendingChat && !waitingReply) { geminiFailure = null; fillManualPrompt(); }
+  renderChat();
 }
 function renderChatSelect() {
   const select = $("#chat-select"), chats = current.chats || [];
@@ -462,17 +480,17 @@ async function generateChat(event) {
     const userMessage = Core.validateUserMessage($("#chat-message").value); const manual = $("#chat-mode").value === "manual";
     const settings = geminiSettings();
     if (!manual && !settings.apiKey) throw new Error("還沒填 Gemini 鑰匙。請按左邊的「設定」填好，或改用手動複製貼上。");
-    const prompt = chatPrompt(userMessage);
+    const prompt = chatPrompt(userMessage, manual);
     pendingMessage = userMessage; $("#chat-message").value = ""; growComposer();
     if (manual) { $("#paste-help").hidden = true; $("#manual-chat-prompt").value = prompt; $("#manual-chat-response").value = ""; renderChat(); return; }
-    waitingReply = true; renderChat();
+    waitingReply = true; waitingNote = ""; geminiFailure = null; renderChat();
     try {
-      const text = await AI.askGemini(prompt, settings);
+      const text = await AI.askGeminiWithRetry(prompt, settings, { onRetry: (attempt) => { waitingNote = `Gemini 塞車中，等一下再試（第 ${attempt} 次）……`; renderChat(); } });
       let response;
       try { response = Core.validateChatResponse(Core.parseJsonObjectText(text)); }
       catch (error) { throw new Error(`Gemini 的回覆沒通過檢查：${error.message}`); }
-      waitingReply = false; showChatPreview(userMessage, response);
-    } catch (error) { waitingReply = false; giveBackMessage(); pendingMessage = null; renderChat(); throw error; }
+      waitingReply = false; waitingNote = ""; showChatPreview(userMessage, response);
+    } catch (error) { waitingReply = false; waitingNote = ""; geminiFailure = `${error.message}\n要換成手動複製貼上嗎？剛剛那句不用重打。`; renderChat(); }
   } catch (error) { toast(error.message, true); }
 }
 function showPasteHelp(message, openFallback = true) { const help = $("#paste-help"); help.textContent = message; help.hidden = false; if (openFallback) $(".manual-fallback").open = true; }
@@ -545,7 +563,7 @@ $("#memory-settings-form").onsubmit = saveMemorySettings; $("#save-state").oncli
 $("#add-relationship").onclick = addRelationship; $("#import-file").onchange = importFile; $("#export-button").onclick = exportCurrent; $("#delete-character").onclick = deleteCharacter;
 $("#copy-json").onclick = () => copyText(JSON.stringify(current, null, 2), "完整 JSON 已複製");
 $("#open-settings").onclick = openSettings; $("#settings-form").onsubmit = saveSettings;
-$("#chat-form").onsubmit = generateChat; $("#chat-mode").onchange = renderChat; $("#copy-chat-prompt").onclick = copyChatPrompt; $("#show-chat-prompt").onclick = toggleChatPrompt; $("#parse-chat-response").onclick = parseManualChatResponse; $("#paste-chat-response").onclick = pasteChatResponse; $("#cancel-manual-chat").onclick = discardPendingChat;
+$("#chat-form").onsubmit = generateChat; $("#chat-mode").onchange = changeChatMode; $("#copy-chat-prompt").onclick = copyChatPrompt; $("#show-chat-prompt").onclick = toggleChatPrompt; $("#parse-chat-response").onclick = parseManualChatResponse; $("#paste-chat-response").onclick = pasteChatResponse; $("#cancel-manual-chat").onclick = discardPendingChat;
 $("#real-time-toggle").onchange = toggleRealTime; $("#new-chat").onclick = openNewChat; $("#chat-select").onchange = switchChat;
 $("#back-to-current-chat").onclick = () => { $("#chat-select").value = Core.currentChatId(current); switchChat(); };
 $("#chat-message").onkeydown = composerKeydown; $("#chat-message").oninput = growComposer;

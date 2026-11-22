@@ -285,3 +285,21 @@ test("近期摘要：送給 AI 的是目前聊天最新那份；新聊天用上�
   assert.match(buildChatPrompt(character, [], "嗨", { summary: Core.summaryForPrompt(character, turns) }), /"recent_summary":"最新的摘要"/);
   assert.doesNotMatch(prompt, /舊的摘要/);
 });
+
+// ---------- 防劇透格式（2026-11-22） ----------
+test("手動模式的提示詞會請 AI 先寫劇透提醒、資料放進程式碼框；自動模式不會", () => {
+  const character = normalize(newCharacter("維伊"));
+  assert.match(buildChatPrompt(character, [], "嗨", { manual: true }), /以下是給程式看的資料，含劇透，請直接按複製/);
+  assert.doesNotMatch(buildChatPrompt(character, [], "嗨"), /含劇透/);
+});
+
+test("整段回覆連劇透提醒和程式碼框一起貼上，也讀得懂", () => {
+  const json = '{"reply":"嗯。","state_proposal":null}';
+  for (const text of [
+    json,
+    "```json\n" + json + "\n```",
+    "以下是給程式看的資料，含劇透，請直接按複製\n```json\n" + json + "\n```",
+    "以下是給程式看的資料，含劇透，請直接按複製\n\n" + json,
+  ]) assert.equal(parseJsonObjectText(text).reply, "嗯。");
+  assert.throws(() => parseJsonObjectText("以下是給程式看的資料，含劇透"), /不是有效的 JSON/);
+});
