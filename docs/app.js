@@ -248,11 +248,11 @@ function importCardFromDialog() {
 }
 
 // ---------- 設定（Gemini 鑰匙只存在這台裝置） ----------
-function openSettings() { const s = Store.getSettings(), form = $("#settings-form"); form.gemini_api_key.value = s.gemini_api_key || ""; form.gemini_model.value = s.gemini_model || ""; $("#settings-dialog").showModal(); }
+function openSettings() { const s = Store.getSettings(), form = $("#settings-form"); form.gemini_api_key.value = s.gemini_api_key || ""; form.gemini_model.value = s.gemini_model || ""; form.phone_zoom.value = s.phone_zoom === "page" ? "page" : "fullscreen"; $("#settings-dialog").showModal(); }
 function saveSettings(event) {
   if (event.submitter?.value === "cancel") return;
   const form = $("#settings-form");
-  try { Store.saveSettings({ ...Store.getSettings(), gemini_api_key: form.gemini_api_key.value.trim(), gemini_model: form.gemini_model.value.trim() }); renderChat(); toast("設定已存在這台裝置"); }
+  try { Store.saveSettings({ ...Store.getSettings(), gemini_api_key: form.gemini_api_key.value.trim(), gemini_model: form.gemini_model.value.trim(), phone_zoom: form.phone_zoom.value }); renderChat(); toast("設定已存在這台裝置"); }
   catch (error) { toast(error.message, true); }
 }
 
@@ -692,7 +692,21 @@ function changeChatWidth(direction) {
   applyChatWidth(width);
   try { Store.saveSettings({ ...Store.getSettings(), chat_width: width }); } catch { /* 存不了也照樣能調 */ }
 }
+// 手機、平板按放大：預設順便進真的全螢幕（設定可以改成只在網頁裡放大）。iPhone 不支援就只在網頁裡放大。
+function wantsFullscreen() {
+  if (!touchOnly || typeof document.documentElement.requestFullscreen !== "function") return false;
+  try { return Store.getSettings().phone_zoom !== "page"; } catch { return true; }
+}
+let zoomFullscreen = false;
+document.addEventListener("fullscreenchange", () => {
+  // 用返回手勢退出全螢幕時，聊天室也一起縮回來。
+  if (!document.fullscreenElement && zoomFullscreen) { zoomFullscreen = false; if (document.body.classList.contains("chat-zoomed")) setChatZoom(false); }
+});
 function setChatZoom(on) {
+  if (on && !document.body.classList.contains("chat-zoomed") && wantsFullscreen() && !document.fullscreenElement) {
+    document.documentElement.requestFullscreen().then(() => { zoomFullscreen = true; }).catch(() => { /* 進不了全螢幕就只在網頁裡放大 */ });
+  }
+  if (!on && zoomFullscreen && document.fullscreenElement) { zoomFullscreen = false; document.exitFullscreen().catch(() => {}); }
   document.body.classList.toggle("chat-zoomed", on);
   $("#chat-width-box").hidden = !on;
   if (on) applyChatWidth(savedChatWidth());
