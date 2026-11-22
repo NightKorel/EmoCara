@@ -504,6 +504,37 @@
     return view;
   }
 
+  // ---------- 整理記憶：請 AI 合併意思一樣或很像的記憶（使用者看過前後對照、按確定才換） ----------
+  function buildMemoryCleanupPrompt(character) {
+    const memories = (character.memories || []).filter(isObject).map((item) => ({ summary: item.summary, importance: item.importance, reason: item.reason }));
+    const data = { name: character.profile?.name || "", memory_settings: normalizeMemorySettings(character.memory_settings), memories };
+    return `你在幫角色整理記憶。memories 是角色目前記住的事，有些意思一樣或很像，或是同一件事的好幾條進展。
+請把意思一樣或很像的合併成一條，同一件事的進展合成一條寫清楚最新的樣子。
+不要編造沒有的事；只出現一次、有意義的事要保留，不要因為想精簡就刪掉。
+合併時 importance 取那幾條裡最高的（core 最高，其次 important，再來 ordinary）。
+每一層的筆數不能超過 memory_settings 的 max_items，每筆 summary 加 reason 的字數不能超過那一層的 max_chars。
+summary 用角色的角度寫記住了什麼，reason 寫為什麼值得記住。
+只回傳 JSON 物件，不要 Markdown 或額外文字。格式：
+{"memories": [{"summary": "記住的事", "importance": "ordinary、important 或 core", "reason": "為什麼值得記住"}]}
+
+輸入資料：
+${JSON.stringify(data)}`;
+  }
+  // 檢查 AI 整理回來的記憶：格式、不能重複、要放得進記憶容量。
+  function validateMemoryCleanup(character, response) {
+    if (!isObject(response) || !sameKeys(response, ["memories"]) || !Array.isArray(response.memories)) throw new Error("整理結果必須是 {\"memories\": [...]} 這樣的 JSON。");
+    const list = response.memories.map(validateMemoryCandidate);
+    if (!list.length && (character.memories || []).length) throw new Error("整理結果是空的，這樣會把記憶全部清掉，先不套用。");
+    if (new Set(list.map((item) => item.summary)).size !== list.length) throw new Error("整理結果裡還有一模一樣的記憶。");
+    validateMemoryCapacity({ ...character, memories: [] }, list);
+    return list;
+  }
+  function applyMemoryCleanup(character, list) {
+    const updated = clone(character);
+    updated.memories = list.map((item) => newMemory(item.summary, item.importance, item.reason, "cleanup"));
+    return normalize(updated);
+  }
+
   // ---------- 角卡（純文字的角色格式，可以在別的軟體慢慢填再匯入） ----------
   const CARD_TITLE = "EmoCara 角卡";
   const CARD_FIELDS = [
@@ -767,7 +798,7 @@ ${supplied}`;
     validateUserMessage, validateMemoryCandidates, validateMemoryCapacity, validateChatResponse, applyChatResponse,
     validateRelationship, characterForPrompt, buildChatPrompt, parseJsonObjectText, memoryKey,
     MAX_PROFILE_PROPOSALS, PROPOSAL_FIELDS, PROPOSAL_REMINDER, validateProfileProposals, addProposals, activeProposals, resolveProposal, newTurnId,
-    cardTemplate, parseCard,
+    cardTemplate, parseCard, buildMemoryCleanupPrompt, validateMemoryCleanup, applyMemoryCleanup,
     MAX_SCENE_LENGTH, MAX_FEELING_LENGTH, latestFeeling, MAX_SUMMARY_LENGTH, chatSummary, summaryForPrompt, fittingMemories,
     FIRST_CHAT_ID, REWIND_LIMIT, currentChatId, turnChatId, turnsInChat, startNewChat, freshCopy,
     snapshotOf, trimSnapshots, rewindKind, rewind, describeTime, withoutTimes, turnsForPrompt,

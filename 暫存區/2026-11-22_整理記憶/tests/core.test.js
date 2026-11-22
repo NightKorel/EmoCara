@@ -477,3 +477,19 @@ test("送給 AI 的舊對話不附上當時想記住的事（已經在角色資�
   const view = Core.turnsForPrompt(normalize(newCharacter("羅爾")), [{ user_message: "a", character_reply: "b", memory_candidates: [{ summary: "x", importance: "ordinary", reason: "y" }] }]);
   assert.equal(view[0].memory_candidates, undefined);
 });
+
+// ---------- 整理記憶 ----------
+test("整理記憶：提示詞帶著目前的記憶；結果要格式對、不重複、放得下才收；套用後換成整理後的", () => {
+  const character = normalize(newCharacter("羅爾"));
+  character.memories.push(Core.newMemory("你來找他", "ordinary", "第一次"), Core.newMemory("你又來找他", "ordinary", "第二次"));
+  const prompt = Core.buildMemoryCleanupPrompt(character);
+  assert.match(prompt, /你又來找他/); assert.match(prompt, /合併/);
+  const list = Core.validateMemoryCleanup(character, { memories: [{ summary: "你常來找他", importance: "important", reason: "來了兩次" }] });
+  const done = Core.applyMemoryCleanup(character, list);
+  assert.deepEqual(done.memories.map((item) => item.summary), ["你常來找他"]);
+  assert.equal(done.memories[0].source, "cleanup");
+  assert.throws(() => Core.validateMemoryCleanup(character, { memories: [] }), /空的/);
+  assert.throws(() => Core.validateMemoryCleanup(character, { memories: [{ summary: "a", importance: "ordinary", reason: "b" }, { summary: "a", importance: "core", reason: "c" }] }), /一模一樣/);
+  assert.throws(() => Core.validateMemoryCleanup(character, { memories: [{ summary: "長".repeat(80), importance: "ordinary", reason: "x" }] }), /上限/);
+  assert.throws(() => Core.validateMemoryCleanup(character, [1]), /memories/);
+});
