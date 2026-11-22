@@ -9,7 +9,7 @@
   <body>
     <div class="app-shell">
       <aside class="sidebar">
-        <div class="brand"><span class="spark">✦</span><div><strong>情緒模擬器</strong><small>角色檔案 v0.1.4</small></div></div>
+        <div class="brand"><span class="spark">✦</span><div><strong>情緒模擬器</strong><small>角色檔案 v0.1.5</small></div></div>
         <button id="new-character" class="primary wide">＋ 新增角色</button>
         <label class="import-button wide">⇧ 匯入角色<input id="import-file" type="file" accept="application/json,.json" /></label>
         <nav><p class="nav-label">我的角色</p><div id="character-list" class="character-list"></div></nav>
@@ -32,27 +32,22 @@
             <button class="tab" data-tab="observer">觀察者</button>
           </div>
 
-          <section id="panel-chat" class="panel tab-panel" hidden>
-            <div class="section-heading"><div><h2>聊天</h2><p>回覆與心理變化都先預覽；只有你確認後才會保存。</p></div><span id="model-status" class="model-status">檢查模型設定中…</span></div>
+          <section id="panel-chat" class="panel tab-panel chat-panel" hidden>
+            <div class="chat-topbar"><h2 id="chat-title">聊天</h2><span id="model-status" class="model-status">檢查模型設定中…</span></div>
             <div id="chat-history" class="chat-history" aria-live="polite"></div>
+            <section id="manual-chat-workflow" class="manual-workflow" hidden>
+              <p class="manual-step">1. 按「複製提示詞」，貼給網頁上的 AI。</p>
+              <div class="chat-actions left"><button id="copy-chat-prompt" class="secondary" type="button">複製提示詞</button><button id="show-chat-prompt" class="text-button" type="button">看提示詞內容</button></div>
+              <textarea id="manual-chat-prompt" rows="8" class="code-input" readonly hidden></textarea>
+              <p class="manual-step">2. 把 AI 回的整段貼在這裡。</p>
+              <textarea id="manual-chat-response" rows="4" class="code-input" placeholder="整段貼上就好，被 ```json 包住也可以。"></textarea>
+              <div class="chat-actions"><button id="cancel-manual-chat" class="secondary" type="button">取消這句</button><button id="parse-chat-response" class="primary" type="button">貼上回覆</button></div>
+            </section>
             <form id="chat-form" class="chat-composer">
-              <label class="field">互動模式<select id="chat-mode"><option value="manual">手動貼回網頁 AI（預設，不連網）</option><option value="automatic">自動：Gemini（要先在設定填鑰匙）</option></select></label>
-              <label class="field">想對角色說的話<textarea id="chat-message" rows="4" maxlength="4000" placeholder="輸入訊息後，手動模式會產生一份可直接複製給網頁 AI 的完整提示詞。"></textarea></label>
-              <div class="chat-actions"><button id="chat-generate" class="primary">產生手動提示詞</button></div>
+              <textarea id="chat-message" rows="1" maxlength="4000" placeholder="想跟他說什麼？" aria-label="想對角色說的話"></textarea>
+              <button id="chat-generate" class="primary chat-send">送出</button>
             </form>
-            <section id="manual-chat-workflow" class="manual-workflow">
-              <label class="field">完整提示詞<textarea id="manual-chat-prompt" rows="9" class="code-input" readonly placeholder="輸入訊息後按「產生手動提示詞」。"></textarea></label>
-              <div class="chat-actions"><button id="copy-chat-prompt" class="secondary" type="button">複製提示詞</button></div>
-              <label class="field">貼回網頁 AI 的完整回覆<textarea id="manual-chat-response" rows="8" class="code-input" placeholder="貼上 AI 回傳的 JSON；即使被 ```json 包住也可以。"></textarea></label>
-              <div class="chat-actions"><button id="parse-chat-response" class="secondary" type="button">解析並預覽</button></div>
-            </section>
-            <section id="chat-preview" class="chat-preview" hidden>
-              <h3>等待確認的回合</h3>
-              <p id="chat-preview-reply" class="preview-reply"></p>
-              <div id="chat-preview-state" class="preview-state"></div>
-              <div id="chat-preview-memories" class="preview-memories"></div>
-              <div class="chat-actions"><button id="discard-chat-preview" class="secondary" type="button">捨棄</button><button id="apply-chat-turn" class="primary" type="button">確認並保存回合</button></div>
-            </section>
+            <div class="chat-mode-row"><label>回覆方式<select id="chat-mode"><option value="manual">手動複製貼上</option><option value="automatic">Gemini 自動回覆</option></select></label><span class="chat-hint">Enter 送出，Shift＋Enter 換行</span></div>
           </section>
 
           <section id="panel-character" class="panel tab-panel">

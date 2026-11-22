@@ -31,7 +31,7 @@ function loadCharacter(id) {
   try { current = Core.normalize(doc); } catch (error) { toast(`這名角色的資料有問題：${error.message}`, true); return; }
   buildDraft();
   selectedRelationshipId = current.relationships.find((item) => item?.relationship_id)?.relationship_id || null;
-  pendingChat = null; refreshChatTurns();
+  resetPendingChat(); refreshChatTurns();
   $("#empty-state").hidden = true; $("#editor").hidden = false; render();
 }
 function render() {
@@ -255,93 +255,120 @@ function renderObserver() {
 }
 
 // ---------- 聊天 ----------
+// 一句話的流程：送出 → 等回覆（pendingMessage）→ 回覆出來等你按確認（pendingChat）→ 確認才存。
+let pendingMessage = null, waitingReply = false;
 function refreshChatTurns() { chatTurns = current ? Store.listTurns(current.character_id, 30) : []; }
+function resetPendingChat() { pendingChat = null; pendingMessage = null; waitingReply = false; }
 function geminiSettings() { const s = Store.getSettings(); return { apiKey: s.gemini_api_key || "", model: s.gemini_model || AI.DEFAULT_GEMINI_MODEL }; }
-function formatStateProposal(proposal) { if (!proposal) return "沒有提出心理狀態變化。"; return `${proposal.summary}\n${JSON.stringify(proposal.state_patch, null, 2)}`; }
+function el(tag, className, text) { const node = document.createElement(tag); if (className) node.className = className; if (text !== undefined) node.textContent = text; return node; }
+function bubble(side, text, extraClass = "") { const row = el("div", `chat-row ${side} ${extraClass}`.trim()); row.append(el("div", "chat-bubble", text)); return row; }
+function turnNotes(turn) {
+  const notes = el("div", "chat-notes");
+  if (turn.state_proposal) { const box = el("details", "chat-note"); box.append(el("summary", "", `心情：${turn.state_proposal.summary}`), el("pre", "", JSON.stringify(turn.state_proposal.state_patch, null, 2))); notes.append(box); }
+  if (turn.memory_candidates?.length) { const box = el("details", "chat-note"); box.append(el("summary", "", `記住了 ${turn.memory_candidates.length} 件事`), el("pre", "", turn.memory_candidates.map((m) => `[${m.importance}] ${m.summary}\n${m.reason}`).join("\n\n"))); notes.append(box); }
+  return notes.childElementCount ? notes : null;
+}
+function pendingBox() {
+  const box = el("div", "chat-confirm");
+  const proposal = pendingChat.response.state_proposal;
+  box.append(el("p", "chat-confirm-line", proposal ? `心情：${proposal.summary}` : "心情沒有變化"));
+  const candidates = pendingChat.response.memory_candidates || [];
+  if (candidates.length) {
+    box.append(el("p", "chat-confirm-line", "想記住的事（勾了才會存）："));
+    candidates.forEach((candidate) => {
+      const label = el("label", "memory-candidate"), input = el("input"); input.type = "checkbox"; const key = Core.memoryKey(candidate);
+      input.checked = pendingChat.selectedMemoryKeys.includes(key);
+      input.onchange = () => { pendingChat.selectedMemoryKeys = input.checked ? [...pendingChat.selectedMemoryKeys, key] : pendingChat.selectedMemoryKeys.filter((item) => item !== key); };
+      label.append(input, el("span", "", `${candidate.summary}（${candidate.reason}）`)); box.append(label);
+    });
+  }
+  const actions = el("div", "chat-confirm-actions");
+  const no = el("button", "secondary", "不要"); no.type = "button"; no.title = "這句不算，回覆和心情都不存"; no.onclick = discardPendingChat;
+  const yes = el("button", "primary", "確認"); yes.type = "button"; yes.title = "保存這句對話和心情變化"; yes.onclick = applyPendingChat;
+  actions.append(no, yes); box.append(actions);
+  return box;
+}
 function renderChat() {
   if (!current) return;
+  const name = current.profile.name || "他";
+  $("#chat-title").textContent = `跟 ${name} 聊天`;
   const history = $("#chat-history"); history.innerHTML = "";
-  if (!chatTurns.length) { const empty = document.createElement("p"); empty.className = "chat-empty"; empty.textContent = "尚未有已確認保存的互動。"; history.append(empty); }
+  if (!chatTurns.length && !pendingMessage) history.append(el("p", "chat-empty", `還沒有對話。在下面打字，跟 ${name} 說說話吧。`));
   chatTurns.forEach((turn) => {
-    const item = document.createElement("article"); item.className = "chat-turn";
-    const user = document.createElement("p"); user.className = "chat-user"; user.textContent = `你：${turn.user_message}`;
-    const reply = document.createElement("p"); reply.className = "chat-character"; reply.textContent = `${current.profile.name}：${turn.character_reply}`;
-    item.append(user, reply);
-    if (turn.state_proposal) { const state = document.createElement("details"); state.className = "chat-turn-state"; state.innerHTML = "<summary>已確認的心理狀態提案</summary>"; const content = document.createElement("pre"); content.textContent = formatStateProposal(turn.state_proposal); state.append(content); item.append(state); }
-    if (turn.memory_candidates?.length) { const memories = document.createElement("details"); memories.className = "chat-turn-state"; memories.innerHTML = `<summary>已保存 ${turn.memory_candidates.length} 筆記憶</summary>`; const content = document.createElement("pre"); content.textContent = turn.memory_candidates.map((m) => `[${m.importance}] ${m.summary}\n${m.reason}`).join("\n\n"); memories.append(content); item.append(memories); }
-    history.append(item);
+    history.append(bubble("me", turn.user_message));
+    const row = bubble("them", turn.character_reply); const notes = turnNotes(turn); if (notes) row.append(notes); history.append(row);
   });
+  if (pendingMessage) history.append(bubble("me", pendingMessage, "pending"));
+  if (waitingReply) history.append(bubble("them", "……", "typing"));
+  if (pendingChat) { const row = bubble("them", pendingChat.response.reply, "pending"); row.append(pendingBox()); history.append(row); }
+  history.scrollTop = history.scrollHeight;
   const manual = $("#chat-mode").value === "manual", ready = Boolean(geminiSettings().apiKey);
-  $("#manual-chat-workflow").hidden = !manual;
-  $("#chat-generate").textContent = manual ? "產生手動提示詞" : "送出給 Gemini";
-  $("#model-status").textContent = manual ? "手動模式：不連網" : (ready ? "自動模式：Gemini" : "自動模式不能用：還沒在「設定」填 Gemini 鑰匙");
+  $("#manual-chat-workflow").hidden = !(manual && pendingMessage && !pendingChat);
+  $("#model-status").textContent = manual ? "手動模式：不連網" : (ready ? "自動模式：Gemini" : "還沒在「設定」填 Gemini 鑰匙");
   $("#model-status").classList.toggle("ready", manual || ready);
-  $("#chat-preview").hidden = !pendingChat;
-  if (pendingChat) { $("#chat-preview-reply").textContent = pendingChat.response.reply; $("#chat-preview-state").textContent = formatStateProposal(pendingChat.response.state_proposal); renderMemoryCandidates(); }
+  $("#chat-generate").disabled = waitingReply;
 }
-function chatMessageOrThrow() { return Core.validateUserMessage($("#chat-message").value); }
 function chatPrompt(userMessage) { return Core.buildChatPrompt(current, Store.listTurns(current.character_id, 12), userMessage); }
-function renderMemoryCandidates() {
-  const container = $("#chat-preview-memories"); container.innerHTML = "";
-  const candidates = pendingChat?.response.memory_candidates || [];
-  if (!candidates.length) { container.textContent = "本次沒有記憶候選項。"; return; }
-  const heading = document.createElement("p"); heading.className = "memory-heading"; heading.textContent = "記憶候選項（預設不保存；勾選後才會寫入角色資料）"; container.append(heading);
-  candidates.forEach((candidate) => {
-    const label = document.createElement("label"); label.className = "memory-candidate";
-    const input = document.createElement("input"); input.type = "checkbox"; const key = Core.memoryKey(candidate);
-    input.checked = pendingChat.selectedMemoryKeys.includes(key);
-    input.onchange = () => { pendingChat.selectedMemoryKeys = input.checked ? [...pendingChat.selectedMemoryKeys, key] : pendingChat.selectedMemoryKeys.filter((item) => item !== key); };
-    const text = document.createElement("span"); text.textContent = `[${candidate.importance}] ${candidate.summary} — ${candidate.reason}`;
-    label.append(input, text); container.append(label);
-  });
-}
 function selectedMemoryCandidates() { const selected = new Set(pendingChat?.selectedMemoryKeys || []); return (pendingChat?.response.memory_candidates || []).filter((candidate) => selected.has(Core.memoryKey(candidate))); }
-function showChatPreview(userMessage, response) { pendingChat = { userMessage, response, selectedMemoryKeys: [] }; renderChat(); $("#chat-preview").scrollIntoView({ behavior: "smooth", block: "nearest" }); }
+function showChatPreview(userMessage, response) { pendingChat = { userMessage, response, selectedMemoryKeys: [] }; renderChat(); }
+// 這句不算：把剛剛打的字放回輸入框，方便改一改重送。
+function giveBackMessage() { const box = $("#chat-message"); if (pendingMessage && !box.value.trim()) { box.value = pendingMessage; growComposer(); } }
 async function generateChat(event) {
   event.preventDefault();
-  const button = $("#chat-generate");
+  if (waitingReply) return;
+  if (pendingMessage) { toast("上一句還沒處理完：先按「確認」或「不要」。", true); return; }
   try {
-    const userMessage = chatMessageOrThrow(); const manual = $("#chat-mode").value === "manual";
-    if (manual) { $("#manual-chat-prompt").value = chatPrompt(userMessage); toast("完整提示詞已產生；可以複製到網頁 AI。"); return; }
+    const userMessage = Core.validateUserMessage($("#chat-message").value); const manual = $("#chat-mode").value === "manual";
     const settings = geminiSettings();
-    if (!settings.apiKey) throw new Error("還沒填 Gemini 鑰匙。請按左邊的「設定」填好，或改用手動模式。");
-    button.disabled = true; button.textContent = "等 Gemini 回覆中……";
-    const text = await AI.askGemini(chatPrompt(userMessage), settings);
-    let response;
-    try { response = Core.validateChatResponse(Core.parseJsonObjectText(text)); }
-    catch (error) { throw new Error(`Gemini 的回覆沒通過檢查：${error.message}`); }
-    showChatPreview(userMessage, response); toast("已取得回覆；確認後才會保存。");
+    if (!manual && !settings.apiKey) throw new Error("還沒填 Gemini 鑰匙。請按左邊的「設定」填好，或改用手動複製貼上。");
+    const prompt = chatPrompt(userMessage);
+    pendingMessage = userMessage; $("#chat-message").value = ""; growComposer();
+    if (manual) { $("#manual-chat-prompt").value = prompt; $("#manual-chat-response").value = ""; renderChat(); return; }
+    waitingReply = true; renderChat();
+    try {
+      const text = await AI.askGemini(prompt, settings);
+      let response;
+      try { response = Core.validateChatResponse(Core.parseJsonObjectText(text)); }
+      catch (error) { throw new Error(`Gemini 的回覆沒通過檢查：${error.message}`); }
+      waitingReply = false; showChatPreview(userMessage, response);
+    } catch (error) { waitingReply = false; giveBackMessage(); pendingMessage = null; renderChat(); throw error; }
   } catch (error) { toast(error.message, true); }
-  finally { button.disabled = false; renderChat(); }
 }
 function parseManualChatResponse() {
   try {
-    const userMessage = chatMessageOrThrow();
+    if (!pendingMessage) throw new Error("先在下面打字送出。");
     let response;
     try { response = Core.validateChatResponse(Core.parseJsonObjectText($("#manual-chat-response").value)); }
     catch (error) { throw new Error(`貼回的內容沒通過檢查：${error.message}`); }
-    showChatPreview(userMessage, response); toast("貼回內容已通過檢查；確認後才會保存。");
+    showChatPreview(pendingMessage, response);
   } catch (error) { toast(error.message, true); }
 }
 async function copyText(text, message) {
   try { await navigator.clipboard.writeText(text); toast(message); }
-  catch { toast("瀏覽器不讓網頁直接複製，請手動全選後複製。", true); }
+  catch { toast("瀏覽器不讓網頁直接複製，請按「看提示詞內容」手動全選後複製。", true); }
 }
-function copyChatPrompt() { const prompt = $("#manual-chat-prompt").value; if (!prompt) { toast("請先產生提示詞。", true); return; } copyText(prompt, "提示詞已複製"); }
+function copyChatPrompt() { const prompt = $("#manual-chat-prompt").value; if (!prompt) { toast("請先送出一句話。", true); return; } copyText(prompt, "提示詞已複製"); }
+function toggleChatPrompt() { const box = $("#manual-chat-prompt"); box.hidden = !box.hidden; $("#show-chat-prompt").textContent = box.hidden ? "看提示詞內容" : "收起提示詞"; }
 function applyPendingChat() {
   if (!pendingChat) return;
   try {
     const userMessage = Core.validateUserMessage(pendingChat.userMessage);
     const { updated, response, selected } = Core.applyChatResponse(current, pendingChat.response, selectedMemoryCandidates());
     current = Store.saveTurn(updated, { contract_version: Core.CHAT_CONTRACT_VERSION, user_message: userMessage, character_reply: response.reply, state_proposal: response.state_proposal, memory_candidates: selected });
-    pendingChat = null; $("#chat-message").value = ""; $("#manual-chat-prompt").value = ""; $("#manual-chat-response").value = "";
-    refreshChatTurns(); refreshList(); render(); toast("這一回合已保存");
+    resetPendingChat(); $("#manual-chat-prompt").value = ""; $("#manual-chat-response").value = "";
+    refreshChatTurns(); refreshList(); render(); $("#chat-message").focus();
   } catch (error) { toast(error.message, true); }
 }
-function discardPendingChat() { pendingChat = null; renderChat(); toast("還沒保存的回覆已捨棄"); }
+function discardPendingChat() { giveBackMessage(); resetPendingChat(); $("#manual-chat-prompt").value = ""; $("#manual-chat-response").value = ""; renderChat(); toast("這句不算，剛剛打的字放回輸入框了"); }
+// 輸入框跟著字數長高，最多長到大約六行。
+function growComposer() { const box = $("#chat-message"); box.style.height = "auto"; box.style.height = `${Math.min(box.scrollHeight, 160)}px`; }
+function composerKeydown(event) {
+  if (event.key !== "Enter" || event.shiftKey || event.isComposing || event.keyCode === 229) return; // 229＝中文輸入法還在選字
+  event.preventDefault(); $("#chat-form").requestSubmit();
+}
 
 // ---------- 分頁與啟動 ----------
-function showTab(name) { document.querySelectorAll(".tab").forEach((x) => x.classList.toggle("active", x.dataset.tab === name)); document.querySelectorAll(".tab-panel").forEach((x) => { x.hidden = x.id !== `panel-${name}`; }); }
+function showTab(name) { document.querySelectorAll(".tab").forEach((x) => x.classList.toggle("active", x.dataset.tab === name)); document.querySelectorAll(".tab-panel").forEach((x) => { x.hidden = x.id !== `panel-${name}`; }); if (name === "chat") { const history = $("#chat-history"); history.scrollTop = history.scrollHeight; } }
 function start() {
   try { refreshList(); if (characters[0]) loadCharacter(characters[0].id); }
   catch (error) { toast(error.message, true); }
@@ -353,7 +380,8 @@ $("#memory-settings-form").onsubmit = saveMemorySettings; $("#save-state").oncli
 $("#add-relationship").onclick = addRelationship; $("#import-file").onchange = importFile; $("#export-button").onclick = exportCurrent; $("#delete-character").onclick = deleteCharacter;
 $("#copy-json").onclick = () => copyText(JSON.stringify(current, null, 2), "完整 JSON 已複製");
 $("#open-settings").onclick = openSettings; $("#settings-form").onsubmit = saveSettings;
-$("#chat-form").onsubmit = generateChat; $("#chat-mode").onchange = renderChat; $("#copy-chat-prompt").onclick = copyChatPrompt; $("#parse-chat-response").onclick = parseManualChatResponse; $("#apply-chat-turn").onclick = applyPendingChat; $("#discard-chat-preview").onclick = discardPendingChat;
+$("#chat-form").onsubmit = generateChat; $("#chat-mode").onchange = renderChat; $("#copy-chat-prompt").onclick = copyChatPrompt; $("#show-chat-prompt").onclick = toggleChatPrompt; $("#parse-chat-response").onclick = parseManualChatResponse; $("#cancel-manual-chat").onclick = discardPendingChat;
+$("#chat-message").onkeydown = composerKeydown; $("#chat-message").oninput = growComposer;
 document.querySelectorAll(".tab").forEach((button) => { button.onclick = () => showTab(button.dataset.tab); });
 // 展開折起來的區塊時，如果展開的內容跑到畫面外面（例如在頁尾），就捲過去讓它看得到。
 document.addEventListener("toggle", (event) => {
