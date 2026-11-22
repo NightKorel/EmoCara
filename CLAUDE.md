@@ -134,6 +134,7 @@
   - `app.js`：畫面。`index.html`、`styles.css`。
 - GitHub Pages 設定：main 分支的 `/docs` 資料夾。`docs/.nojekyll` 不要刪。
 - 本機試跑：在 `docs/` 開一個簡單的網頁伺服器（例：`python -m http.server`），或直接雙擊 `docs/index.html`。
-- 核心設計：AI 只能「提案」，`core.js` 驗證過、納可按確認後才存進去。不要改成讓 AI 直接寫資料。
+- 核心設計：AI 的回覆一律先經過 `core.js` 驗證，格式不對就擋下來，AI 不能改角色設定（profile、modules 等）。
+  - 2026-11-22 納可改規則：「不用每次讓我確認」。聊天回覆通過驗證就直接存（心情變化、想記住的事都自動存，記憶滿了那層就不存、不擠掉舊的），反悔用最新那句的「取消」或「從這句重來」。
 - 測試在 `tests/`，用 `node --test tests/*.test.js` 跑。
 - 匯出的檔案＝角色 JSON 加上 `chat_turns`（對話紀錄）。舊電腦版匯出的 JSON 也能匯入。
