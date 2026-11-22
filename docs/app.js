@@ -686,16 +686,22 @@ function resolveProposalUI(item, accept, text) {
 }
 
 // ---------- 聊天室放大（網頁裡鋪滿畫面） ----------
-// 放大時那一欄的寬度（記在這台裝置）。
-function applyChatWidth(width) { if (Number.isFinite(width)) document.documentElement.style.setProperty("--chat-width", `${width}px`); }
-function changeChatWidth() {
-  const width = Number($("#chat-width").value); applyChatWidth(width);
+// 放大時那一欄的寬度（記在這台裝置）。按－／＋每次 80，最窄 480、最寬 1600。
+const CHAT_WIDTH = { min: 480, max: 1600, step: 80, start: 820 };
+function savedChatWidth() { const saved = Store.getSettings().chat_width; return Number.isFinite(saved) ? saved : CHAT_WIDTH.start; }
+function applyChatWidth(width) {
+  document.documentElement.style.setProperty("--chat-width", `${width}px`);
+  $("#chat-narrower").disabled = width <= CHAT_WIDTH.min; $("#chat-wider").disabled = width >= CHAT_WIDTH.max;
+}
+function changeChatWidth(direction) {
+  const width = Math.min(CHAT_WIDTH.max, Math.max(CHAT_WIDTH.min, savedChatWidth() + direction * CHAT_WIDTH.step));
+  applyChatWidth(width);
   try { Store.saveSettings({ ...Store.getSettings(), chat_width: width }); } catch { /* 存不了也照樣能調 */ }
 }
 function setChatZoom(on) {
   document.body.classList.toggle("chat-zoomed", on);
   $("#chat-width-box").hidden = !on;
-  if (on) { const saved = Store.getSettings().chat_width; $("#chat-width").value = Number.isFinite(saved) ? saved : 820; applyChatWidth(Number($("#chat-width").value)); }
+  if (on) applyChatWidth(savedChatWidth());
   const button = $("#chat-zoom"); button.textContent = on ? "縮小" : "放大"; button.title = on ? "回到原本的大小（也可以按 Esc）" : "聊天室鋪滿整個畫面";
   const history = $("#chat-history"); history.scrollTop = history.scrollHeight;
 }
@@ -704,7 +710,7 @@ function setChatZoom(on) {
 function showTab(name) { if (name !== "chat") setChatZoom(false); document.querySelectorAll(".tab").forEach((x) => x.classList.toggle("active", x.dataset.tab === name)); document.querySelectorAll(".tab-panel").forEach((x) => { x.hidden = x.id !== `panel-${name}`; }); if (name === "chat") { const history = $("#chat-history"); history.scrollTop = history.scrollHeight; } }
 function start() {
   try { applyTheme(); } catch { /* 存不了設定也照樣能玩 */ }
-  setupHueRing(); $("#chat-width").oninput = changeChatWidth;
+  setupHueRing(); $("#chat-narrower").onclick = () => changeChatWidth(-1); $("#chat-wider").onclick = () => changeChatWidth(1);
   $("#card-open").onclick = openCardDialog; $("#card-copy").onclick = () => copyText($("#card-template").value, "空白角卡已經複製好了", "瀏覽器不讓網頁直接複製，請在上面的框裡全選後複製，或按「下載成檔案」。");
   $("#card-download").onclick = downloadCard; $("#card-import").onclick = importCardFromDialog;
   try { refreshList(); if (characters[0]) { loadCharacter(characters[0].id); showTab("chat"); } }

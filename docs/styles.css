@@ -55,7 +55,8 @@ body.chat-zoomed #panel-chat { background:var(--canvas); }
 body.chat-zoomed #panel-chat > * { width:100%; max-width:var(--chat-width, 820px); margin-inline:auto; background:var(--paper); border-inline:1px solid var(--line); }
 body.chat-zoomed #panel-chat > .chat-history { background:var(--cf7faf9); }
 .chat-width { display:flex; align-items:center; gap:6px; font-size:.78rem; color:var(--muted); }
-.chat-width input { width:110px; accent-color:var(--accent); }
+.width-button { width:28px; height:28px; padding:0; border:1px solid var(--line); border-radius:7px; background:var(--soft); color:var(--accent-dark); font-size:1rem; line-height:1; }
+.width-button:disabled { opacity:.4; cursor:default; }
 @media (max-width:780px) { .chat-width { display:none !important; } }
 /* 角卡 */
 .card-dialog { width:min(560px,calc(100vw - 30px)); }

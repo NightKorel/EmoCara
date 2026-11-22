@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>情緒模擬器｜角色檔案</title>
-    <link rel="stylesheet" href="styles.css?v=0.1.20" />
+    <link rel="stylesheet" href="styles.css?v=0.1.21" />
     <script>
       // 先套上深淺色，免得打開時先閃一下白色。預設深色。
       try { const s = JSON.parse(localStorage.getItem("emocara:settings") || "{}"); document.documentElement.dataset.theme = s.theme === "light" ? "light" : "dark"; }
@@ -14,7 +14,7 @@
   <body>
     <div class="app-shell">
       <aside class="sidebar">
-        <div class="brand"><span class="spark">✦</span><div><strong>情緒模擬器</strong><small>角色檔案 v0.1.20</small></div></div>
+        <div class="brand"><span class="spark">✦</span><div><strong>情緒模擬器</strong><small>角色檔案 v0.1.21</small></div></div>
         <button id="new-character" class="primary wide">＋ 新增角色</button>
         <label class="import-button wide">⇧ 匯入角色<input id="import-file" type="file" accept="application/json,.json,text/plain,.txt" /></label>
         <button id="card-open" class="secondary wide settings-button" type="button">▤ 角卡</button>
@@ -41,7 +41,7 @@
           </div>
 
           <section id="panel-chat" class="panel tab-panel chat-panel" hidden>
-            <div class="chat-topbar"><h2 id="chat-title">聊天</h2><div class="chat-topbar-right"><label id="chat-width-box" class="chat-width" hidden>寬度<input id="chat-width" type="range" min="480" max="1600" step="20" aria-label="聊天框的寬度"></label><span id="model-status" class="model-status">檢查模型設定中…</span><button id="chat-zoom" class="secondary small-button" type="button" title="聊天室鋪滿整個畫面">放大</button></div></div>
+            <div class="chat-topbar"><h2 id="chat-title">聊天</h2><div class="chat-topbar-right"><span id="chat-width-box" class="chat-width" hidden>寬度<button id="chat-narrower" class="width-button" type="button" aria-label="窄一點">－</button><button id="chat-wider" class="width-button" type="button" aria-label="寬一點">＋</button></span><span id="model-status" class="model-status">檢查模型設定中…</span><button id="chat-zoom" class="secondary small-button" type="button" title="聊天室鋪滿整個畫面">放大</button></div></div>
             <div class="chat-tools">
               <label class="time-switch" title="開著：他知道現在幾點、隔了多久。關著：時間不流動。"><input type="checkbox" id="real-time-toggle"> 現實時間</label>
               <label class="time-switch" title="開著：聊天裡發生的事改變了他，AI 會提議改他的設定，你同意才會改。"><input type="checkbox" id="proposal-toggle"> 設定提議</label>
@@ -180,9 +180,9 @@
       <label class="field">Gemini 模型名稱<input name="gemini_model" placeholder="gemini-3.8-flash" /></label>
       <p class="muted">只用手動模式的話，這裡可以不填。</p>
       <div class="dialog-actions"><button value="cancel" class="secondary">取消</button><button value="default" class="primary">儲存</button></div></form></dialog>
-    <script src="core.js?v=0.1.20"></script>
-    <script src="store.js?v=0.1.20"></script>
-    <script src="ai.js?v=0.1.20"></script>
-    <script src="app.js?v=0.1.20"></script>
+    <script src="core.js?v=0.1.21"></script>
+    <script src="store.js?v=0.1.21"></script>
+    <script src="ai.js?v=0.1.21"></script>
+    <script src="app.js?v=0.1.21"></script>
   </body>
 </html>
