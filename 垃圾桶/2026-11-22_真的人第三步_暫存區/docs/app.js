@@ -236,6 +236,16 @@ function renderObserver() {
   const carried = !summary && !viewingOldChat() ? Core.summaryForPrompt(current, allTurns) : null;
   $("#observer-summary").textContent = summary || (carried ? `（這段聊天還沒有自己的摘要，他帶著上一段聊天結束時記得的經過）\n${carried.text}` : "還沒有摘要。聊幾句之後，AI 會開始寫他記得的最近經過。");
   $("#observer-summary").classList.toggle("observer-empty", !summary);
+  // 他現在：最新的心情和對你的感覺（用文字）。
+  const latest = [...allTurns].reverse().find((turn) => turn.mood_now || turn.feeling_toward_user);
+  const now = $("#observer-now"); now.innerHTML = "";
+  const feeling = Core.latestFeeling(allTurns);
+  if (!latest && !feeling) now.append(el("p", "observer-empty", "還沒有紀錄。聊幾句之後，這裡會寫他現在的心情，和他對你的感覺。"));
+  else {
+    if (latest?.mood_now) now.append(el("p", "now-line", `心情：${latest.mood_now}`));
+    if (feeling) now.append(el("p", "now-line", `對你的感覺：${feeling}`));
+  }
+  $("#observer-now-time").textContent = latest ? `${formatTime(latest.created_at)} 那句之後` : "";
   const timeline = $("#observer-inner"); timeline.innerHTML = "";
   if (!chatTurns.length) timeline.append(el("p", "observer-empty", "還沒有對話。"));
   [...chatTurns].reverse().forEach((turn) => {
@@ -245,7 +255,9 @@ function renderObserver() {
     if (turn.scene) card.append(el("p", "thought-scene", `畫面：${turn.scene}`));
     card.append(el("p", "thought-said", `他說：${turn.character_reply}`));
     card.append(el("p", "thought-inner", turn.inner_thought === undefined ? "（這句沒有記錄內心）" : (turn.inner_thought ? `心裡：${turn.inner_thought}` : "心裡：沒有特別的想法")));
-    if (turn.state_proposal) card.append(el("p", "thought-mood", `心情：${turn.state_proposal.summary}`));
+    const mood = turn.mood_now || turn.state_proposal?.summary;
+    if (mood) card.append(el("p", "thought-mood", `心情：${mood}`));
+    if (turn.feeling_toward_user) card.append(el("p", "thought-mood", `對你的感覺：${turn.feeling_toward_user}`));
     timeline.append(card);
   });
   const state = $("#observer-state"); state.innerHTML = "";
@@ -357,7 +369,7 @@ function renderChat() {
 }
 function chatPrompt(userMessage, manual = false) {
   const all = Store.allTurns(current.character_id);
-  return Core.buildChatPrompt(current, Core.turnsInChat(all, Core.currentChatId(current)).slice(-12), userMessage, { summary: Core.summaryForPrompt(current, all), manual });
+  return Core.buildChatPrompt(current, Core.turnsInChat(all, Core.currentChatId(current)).slice(-12), userMessage, { summary: Core.summaryForPrompt(current, all), manual, feeling: Core.latestFeeling(all) });
 }
 // Gemini 失敗時：剛剛那句直接換成手動流程，不用重打。
 function fillManualPrompt() { $("#paste-help").hidden = true; $("#manual-chat-prompt").value = chatPrompt(pendingMessage, true); $("#manual-chat-response").value = ""; }
@@ -534,7 +546,7 @@ function saveReply(userMessage, rawResponse) {
     const withProposals = proposalsOn ? Core.addProposals(updated, response.profile_proposals, turnId).updated : updated;
     // AI 這次沒寫摘要的話，沿用這段聊天上一份。
     const recentSummary = response.recent_summary || Core.chatSummary(Store.allTurns(current.character_id), chatId) || undefined;
-    current = Store.saveTurn(withProposals, { id: turnId, contract_version: Core.CHAT_CONTRACT_VERSION, chat_id: chatId, user_message: message, character_reply: response.reply, inner_thought: response.inner_thought, recent_summary: recentSummary, state_proposal: response.state_proposal, memory_candidates: selected, before, ...(videoOn && response.scene ? { scene: response.scene } : {}) });
+    current = Store.saveTurn(withProposals, { id: turnId, contract_version: Core.CHAT_CONTRACT_VERSION, chat_id: chatId, user_message: message, character_reply: response.reply, inner_thought: response.inner_thought, recent_summary: recentSummary, state_proposal: response.state_proposal, memory_candidates: selected, before, ...(videoOn && response.scene ? { scene: response.scene } : {}), ...(response.mood_now ? { mood_now: response.mood_now } : {}), ...(response.feeling_toward_user ? { feeling_toward_user: response.feeling_toward_user } : {}) });
     Store.replaceTurns(current.character_id, Core.trimSnapshots(Store.allTurns(current.character_id), chatId));
     resetPendingChat(); $("#manual-chat-prompt").value = ""; $("#manual-chat-response").value = "";
     refreshChatTurns(); refreshList(); render(); $("#chat-message").focus();

@@ -5,12 +5,13 @@
   "use strict";
 
   const SCHEMA_VERSION = "0.1";
-  const CHAT_CONTRACT_VERSION = "chat_turn/v0.5";
+  const CHAT_CONTRACT_VERSION = "chat_turn/v0.6";
   const MAX_MESSAGE_LENGTH = 4000;
   const MAX_REPLY_LENGTH = 6000;
   const MAX_INNER_LENGTH = 2000; // 心裡沒說出口的話，最多幾個字
   const MAX_SUMMARY_LENGTH = 500; // 近期摘要（他記得的最近經過），最多幾個字
   const MAX_SCENE_LENGTH = 300; // 視訊模式：鏡頭看得到的描述，最多幾個字
+  const MAX_FEELING_LENGTH = 200; // 他現在的心情、他對你的感覺，各最多幾個字（提示詞請 AI 寫 100 字以內，這裡放寬一點）
   const MAX_MEMORY_CANDIDATES = 3;
   const MAX_MEMORY_TEXT_LENGTH = 1000;
   // 設定提議：AI 每句最多提幾筆、每筆多長；同一欄最多留幾筆舊的；待處理幾筆以上才提醒。
@@ -315,8 +316,8 @@
 
   function validateChatResponse(response) {
     if (!isObject(response)) throw new Error("互動回覆必須是 JSON 物件。");
-    const keys = Object.keys(response), allowedKeys = ["reply", "state_proposal", "memory_candidates", "inner_thought", "recent_summary", "profile_proposals", "scene"];
-    if (!("reply" in response) || !("state_proposal" in response) || keys.some((key) => !allowedKeys.includes(key))) throw new Error("互動回覆只能包含 reply、state_proposal、memory_candidates、inner_thought、recent_summary、profile_proposals 與 scene。");
+    const keys = Object.keys(response), allowedKeys = ["reply", "state_proposal", "memory_candidates", "inner_thought", "recent_summary", "profile_proposals", "scene", "mood_now", "feeling_toward_user"];
+    if (!("reply" in response) || !("state_proposal" in response) || keys.some((key) => !allowedKeys.includes(key))) throw new Error("互動回覆只能包含 reply、state_proposal、memory_candidates、inner_thought、recent_summary、profile_proposals、scene、mood_now 與 feeling_toward_user。");
     const inner = response.inner_thought ?? "";
     if (typeof inner !== "string" || inner.trim().length > MAX_INNER_LENGTH) throw new Error(`inner_thought 必須是 ${MAX_INNER_LENGTH} 個字元以內的文字。`);
     // 近期摘要：沒寫就是 null（沿用上一份）。
@@ -325,6 +326,13 @@
     // 視訊模式的描述：沒寫就是 ""。
     const scene = response.scene ?? "";
     if (typeof scene !== "string" || scene.trim().length > MAX_SCENE_LENGTH) throw new Error(`scene 必須是 ${MAX_SCENE_LENGTH} 個字元以內的文字。`);
+    // 他現在的心情、他對你的感覺：用文字，沒寫就是 ""。
+    const texts = {};
+    for (const key of ["mood_now", "feeling_toward_user"]) {
+      const value = response[key] ?? "";
+      if (typeof value !== "string" || value.trim().length > MAX_FEELING_LENGTH) throw new Error(`${key} 必須是 ${MAX_FEELING_LENGTH} 個字元以內的文字。`);
+      texts[key] = value.trim();
+    }
     const reply = response.reply;
     if (typeof reply !== "string" || !reply.trim() || reply.trim().length > MAX_REPLY_LENGTH) throw new Error(`reply 必須是 1 至 ${MAX_REPLY_LENGTH} 個字元的文字。`);
     const proposal = response.state_proposal;
@@ -332,6 +340,8 @@
       reply: reply.trim(),
       inner_thought: inner.trim(),
       scene: scene.trim(),
+      mood_now: texts.mood_now,
+      feeling_toward_user: texts.feeling_toward_user,
       recent_summary: summary === null || !summary.trim() ? null : summary.trim(),
       state_proposal: proposal === null ? null : validateStateProposal(proposal),
       memory_candidates: validateMemoryCandidates(response.memory_candidates === undefined ? [] : response.memory_candidates),
@@ -558,6 +568,12 @@
     return previous ? { text: previous, from: "previous_chat" } : null;
   }
 
+  // 他最近一次對你的感覺（跨聊天視窗也算，同一個他）。
+  function latestFeeling(turns) {
+    const found = (Array.isArray(turns) ? turns : []).filter((turn) => typeof turn.feeling_toward_user === "string" && turn.feeling_toward_user.trim()).slice(-1)[0];
+    return found ? found.feeling_toward_user : null;
+  }
+
   // ---------- 時間 ----------
   const WEEKDAYS = ["日", "一", "二", "三", "四", "五", "六"];
   function describeTime(iso) {
@@ -590,7 +606,7 @@
   }
 
   const SPOILER_LINE = "以下是給程式看的資料，含劇透，請直接按複製";
-  function buildChatPrompt(character, recentTurns, userMessage, { now = timestamp(), summary = null, manual = false } = {}) {
+  function buildChatPrompt(character, recentTurns, userMessage, { now = timestamp(), summary = null, manual = false, feeling = null } = {}) {
     const realTime = character.chat_settings?.real_time === true;
     const proposalsOn = character.chat_settings?.proposals !== false, videoOn = character.chat_settings?.video !== false;
     const view = compactForPrompt(characterForPrompt(character));
@@ -599,6 +615,7 @@
     if (pending.length) data.pending_profile_proposals = pending.map((item) => { const out = { target: item.target }; if (item.target === "module") out.module_name = item.module_name; out.new_text = item.new_text; return out; });
     if (summary?.from === "this_chat") data.recent_summary = summary.text;
     if (summary?.from === "previous_chat") data.previous_chat_summary = summary.text;
+    if (feeling) data.feeling_toward_user = feeling;
     data.recent_turns = turnsForPrompt(character, recentTurns); data.user_message = userMessage;
     const supplied = JSON.stringify(data);
     const timeRule = realTime
@@ -616,6 +633,8 @@ ${manual ? `回覆的第一行只寫「${SPOILER_LINE}」這一句，接著把 J
   "scene": "鏡頭看得到的描述（樣貌、動作、場景、表情）",` : ""}
   "inner_thought": "角色心裡想、但沒有說出口的話",
   "recent_summary": "用角色的角度寫：他記得的最近經過",
+  "mood_now": "他現在的心情",
+  "feeling_toward_user": "他現在對使用者的感覺",
   "state_proposal": null 或 {
     "summary": "簡短說明",
     "state_patch": {
@@ -643,6 +662,8 @@ scene 不要重複 reply 說的話。recent_turns 裡的 scene 是之前的畫�
 recent_summary 是角色用自己的角度記得的最近經過（可以帶著感受和誤會），${MAX_SUMMARY_LENGTH} 字以內。
 把輸入資料的 recent_summary（或 previous_chat_summary：上一段聊天結束時的經過）和這次對話合起來更新；
 recent_turns 只留最近幾句，快看不到的重要內容要濃縮進來。長期重要的事另外用 memory_candidates 提出。
+mood_now 和 feeling_toward_user 各寫一兩句、100 字以內，用旁觀者的角度寫，可以寫出他自己沒察覺的感受。
+輸入資料的 feeling_toward_user 是他上一次對使用者的感覺：從那裡慢慢變化，除非這次真的發生了大事，不要突然翻轉。
 state_proposal 只在這次對話確實讓心理數值有變化時提出；否則填 null。
 memory_candidates 最多三筆，只記本次對話明確出現、有長期意義的事；沒有就回傳 []。
 角色資料的 memory_settings 是各層級的筆數與每筆字數上限，要遵守；放不下的不會存。
@@ -679,7 +700,7 @@ ${supplied}`;
     validateUserMessage, validateMemoryCandidates, validateMemoryCapacity, validateChatResponse, applyChatResponse,
     validateRelationship, characterForPrompt, buildChatPrompt, parseJsonObjectText, memoryKey,
     MAX_PROFILE_PROPOSALS, PROPOSAL_FIELDS, PROPOSAL_REMINDER, validateProfileProposals, addProposals, activeProposals, resolveProposal, newTurnId,
-    MAX_SCENE_LENGTH, MAX_SUMMARY_LENGTH, chatSummary, summaryForPrompt, fittingMemories,
+    MAX_SCENE_LENGTH, MAX_FEELING_LENGTH, latestFeeling, MAX_SUMMARY_LENGTH, chatSummary, summaryForPrompt, fittingMemories,
     FIRST_CHAT_ID, REWIND_LIMIT, currentChatId, turnChatId, turnsInChat, startNewChat, freshCopy,
     snapshotOf, trimSnapshots, rewindKind, rewind, describeTime, withoutTimes, turnsForPrompt,
   };

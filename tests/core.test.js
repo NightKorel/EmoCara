@@ -415,3 +415,19 @@ test("視訊模式：開著時提示詞會請 AI 寫 scene，之前的畫面會�
   const off = buildChatPrompt({ ...character, chat_settings: { ...character.chat_settings, video: false } }, [], "你在哪？");
   assert.doesNotMatch(off, /視訊模式/); assert.doesNotMatch(off, /"scene"/);
 });
+
+// ---------- 他現在的心情、對你的感覺 ----------
+test("心情和對你的感覺：用文字保留，沒寫就是空的，太長會被擋", () => {
+  const ok = validateChatResponse({ reply: "嗯。", state_proposal: null, mood_now: " 有點累，但放鬆 ", feeling_toward_user: "開始習慣你在旁邊" });
+  assert.equal(ok.mood_now, "有點累，但放鬆"); assert.equal(ok.feeling_toward_user, "開始習慣你在旁邊");
+  assert.equal(validateChatResponse({ reply: "嗯。", state_proposal: null }).mood_now, "");
+  assert.throws(() => validateChatResponse({ reply: "嗯。", state_proposal: null, feeling_toward_user: "長".repeat(201) }), /feeling_toward_user/);
+});
+
+test("對你的感覺：送給 AI 的是最近那份，跨聊天視窗也算", () => {
+  const turns = [{ chat_id: "chat_first", feeling_toward_user: "有點防備" }, { chat_id: "chat_b", feeling_toward_user: "" }, { chat_id: "chat_b" }];
+  assert.equal(Core.latestFeeling(turns), "有點防備");
+  assert.equal(Core.latestFeeling([]), null);
+  const prompt = buildChatPrompt(normalize(newCharacter("羅爾")), [], "嗨", { feeling: "有點防備" });
+  assert.match(prompt, /"feeling_toward_user":"有點防備"/); assert.match(prompt, /"mood_now"/);
+});

@@ -130,11 +130,14 @@
           </section>
           <section id="panel-observer" class="panel tab-panel" hidden>
             <div class="section-heading"><div><h2>觀察者</h2><p>僅在你主動開啟此頁時顯示；不會在聊天中自動曝光角色的內在資料。</p></div><span class="observer-badge">只讀</span></div>
+            <section class="observer-section"><div class="observer-title"><h3>他現在</h3><span id="observer-now-time" class="observer-note"></span></div><div id="observer-now" class="observer-now"></div></section>
             <section class="observer-section"><div class="observer-title"><h3>他記得的近期經過</h3><span class="observer-note">AI 每句順便更新，最多 500 字</span></div><p id="observer-summary" class="observer-summary"></p></section>
             <section class="observer-section"><div class="observer-title"><h3>內心時間線</h3><span class="observer-note">最近 30 句，新的在上面</span></div><div id="observer-inner" class="observer-inner"></div></section>
-            <section class="observer-section"><h3>目前心理狀態</h3><div id="observer-state" class="observer-metrics"></div></section>
             <section class="observer-section"><div class="observer-title"><h3>已確認記憶</h3><span id="observer-memory-count" class="badge">0</span></div><div id="observer-memories" class="observer-memories"></div></section>
-            <section class="observer-section"><h3>關係資料</h3><p id="observer-relationships" class="observer-empty"></p><div id="observer-relationship-list" class="observer-relationships"></div></section>
+            <details class="advanced observer-numbers"><summary>數字（心理數值、關係），平常不用看</summary>
+              <section class="observer-section"><h3>目前心理狀態</h3><div id="observer-state" class="observer-metrics"></div></section>
+              <section class="observer-section"><h3>關係資料</h3><p id="observer-relationships" class="observer-empty"></p><div id="observer-relationship-list" class="observer-relationships"></div></section>
+            </details>
           </section>
 
         </section>
