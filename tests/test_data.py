@@ -96,3 +96,29 @@ def test_memory_settings_default_and_validation_are_backward_compatible():
         assert "max_items" in str(error)
     else:
         raise AssertionError("invalid memory limit should be rejected")
+
+
+def test_module_text_is_kept_and_old_modules_get_empty_text():
+    character = new_character()
+    module = new_module("free"); module["text"] = "話不多，但很會觀察人。"
+    old_style = {"module_id": "m_old", "type": "values", "name": "價值觀", "enabled": True, "data": {"核心": "誠實"}, "notes": ""}
+    character["modules"] = [module, old_style]
+    normalized = normalize(character)
+    assert normalized["modules"][0]["name"] == "自由描述"
+    assert normalized["modules"][0]["text"] == "話不多，但很會觀察人。"
+    assert normalized["modules"][1]["text"] == ""
+    assert normalized["modules"][1]["data"] == {"核心": "誠實"}
+
+
+def test_prompt_only_includes_enabled_modules_with_content():
+    from app.model_interface import character_for_prompt
+    character = new_character()
+    written = new_module("personality"); written["text"] = "溫和、慢熱。"
+    empty = new_module("values")
+    turned_off = new_module("trauma"); turned_off["text"] = "小時候被丟下過。"; turned_off["enabled"] = False
+    old_style = new_module("goals"); old_style["data"] = {"目標": "存錢開店"}
+    character["modules"] = [written, empty, turned_off, old_style]
+    view = character_for_prompt(character)
+    assert [item["name"] for item in view["modules"]] == ["人格特質", "需求與目標"]
+    assert view["modules"][0]["text"] == "溫和、慢熱。"
+    assert character["modules"][1]["name"] == "價值觀"  # 原本的資料沒被改動

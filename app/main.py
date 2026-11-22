@@ -22,13 +22,13 @@ from .model_interface import (
 from .interactions import CHAT_CONTRACT_VERSION, apply_chat_response, validate_chat_response, validate_user_message
 from .relationships import new_relationship, validate_relationship
 from .repository import CharacterRepository
-from .schemas import PRESET_MODULES, new_character, new_module, normalize
+from .schemas import MODULE_GUIDES, PRESET_MODULES, new_character, new_module, normalize
 from .state_proposals import apply_state_proposal, validate_state_proposal
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 DB_PATH = Path(os.getenv("EMOSIM_DB", BASE_DIR / "data" / "emotional_simulator.db"))
 repository = CharacterRepository(DB_PATH)
-app = FastAPI(title="情緒模擬器｜角色檔案", version="0.1.1")
+app = FastAPI(title="情緒模擬器｜角色檔案", version="0.1.2")
 app.mount("/static", StaticFiles(directory=BASE_DIR / "static"), name="static")
 
 
@@ -64,6 +64,12 @@ def model_status() -> dict[str, Any]:
 
 @app.get("/api/module-types")
 def module_types() -> dict[str, str]: return PRESET_MODULES
+
+
+@app.get("/api/module-presets")
+def module_presets() -> list[dict[str, str]]:
+    """角色頁要擺出來的預設模組（照順序）與引導問題；自訂模組不在這裡。"""
+    return [{"type": key, "name": name, "guide": MODULE_GUIDES.get(key, "")} for key, name in PRESET_MODULES.items() if key != "custom"]
 
 
 @app.get("/api/characters")
@@ -280,7 +286,7 @@ def module_or_404(character: dict[str, Any], module_id: str) -> dict[str, Any]:
 async def update_module(character_id: str, module_id: str, request: Request) -> dict[str, Any]:
     character = character_or_404(character_id); module = module_or_404(character, module_id); body = await request.json()
     if not isinstance(body, dict): raise HTTPException(422, "模組資料必須是 JSON 物件。")
-    for key in ("type", "name", "enabled", "data", "notes"):
+    for key in ("type", "name", "enabled", "text", "data", "notes"):
         if key in body: module[key] = body[key]
     return save_validated(character)
 

@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>情緒模擬器｜角色檔案</title>
+    <link rel="stylesheet" href="/static/styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="sidebar">
+        <div class="brand"><span class="spark">✦</span><div><strong>情緒模擬器</strong><small>角色檔案 v0.1.2</small></div></div>
+        <button id="new-character" class="primary wide">＋ 新增角色</button>
+        <label class="import-button wide">⇧ 匯入角色 JSON<input id="import-file" type="file" accept="application/json,.json" /></label>
+        <nav><p class="nav-label">我的角色</p><div id="character-list" class="character-list"></div></nav>
+        <p class="sidebar-note">聊天預設採手動模式；除非你明確啟用模型，程式不會發出 AI 請求。</p>
+      </aside>
+      <main class="content">
+        <section id="empty-state" class="empty-state">
+          <div class="empty-icon">◌</div><h1>先建立一名角色</h1><p>把固定設定、心理模組與初始狀態放進同一份可攜的角色檔案。</p>
+          <button class="primary" data-new>新增第一名角色</button>
+        </section>
+        <section id="editor" hidden>
+          <header class="page-header">
+            <div><p class="eyebrow">CHARACTER PROFILE</p><h1 id="character-title">未命名角色</h1><p id="save-status" class="muted">已儲存至本機 SQLite</p></div>
+            <div class="header-actions"><button id="export-button" class="secondary">匯出 JSON</button><button id="delete-character" class="danger-link">刪除角色</button></div>
+          </header>
+          <div class="tabs" role="tablist">
+            <button class="tab" data-tab="chat">聊天</button>
+            <button class="tab active" data-tab="character">角色</button>
+            <button class="tab" data-tab="observer">觀察者</button>
+          </div>
+
+          <section id="panel-chat" class="panel tab-panel" hidden>
+            <div class="section-heading"><div><h2>聊天</h2><p>回覆與心理變化都先預覽；只有你確認後才會保存。</p></div><span id="model-status" class="model-status">檢查模型設定中…</span></div>
+            <div id="chat-history" class="chat-history" aria-live="polite"></div>
+            <form id="chat-form" class="chat-composer">
+              <label class="field">互動模式<select id="chat-mode"><option value="manual">手動貼回網頁 AI（預設，不連網）</option><option value="automatic">自動 API／本機模型</option></select></label>
+              <label class="field">想對角色說的話<textarea id="chat-message" rows="4" maxlength="4000" placeholder="輸入訊息後，手動模式會產生一份可直接複製給網頁 AI 的完整提示詞。"></textarea></label>
+              <div class="chat-actions"><button id="chat-generate" class="primary">產生手動提示詞</button></div>
+            </form>
+            <section id="manual-chat-workflow" class="manual-workflow">
+              <label class="field">完整提示詞<textarea id="manual-chat-prompt" rows="9" class="code-input" readonly placeholder="輸入訊息後按「產生手動提示詞」。"></textarea></label>
+              <div class="chat-actions"><button id="copy-chat-prompt" class="secondary" type="button">複製提示詞</button></div>
+              <label class="field">貼回網頁 AI 的完整回覆<textarea id="manual-chat-response" rows="8" class="code-input" placeholder="貼上 AI 回傳的 JSON；即使被 ```json 包住也可以。"></textarea></label>
+              <div class="chat-actions"><button id="parse-chat-response" class="secondary" type="button">解析並預覽</button></div>
+            </section>
+            <section id="chat-preview" class="chat-preview" hidden>
+              <h3>等待確認的回合</h3>
+              <p id="chat-preview-reply" class="preview-reply"></p>
+              <div id="chat-preview-state" class="preview-state"></div>
+              <div id="chat-preview-memories" class="preview-memories"></div>
+              <div class="chat-actions"><button id="discard-chat-preview" class="secondary" type="button">捨棄</button><button id="apply-chat-turn" class="primary" type="button">確認並保存回合</button></div>
+            </section>
+          </section>
+
+          <section id="panel-character" class="panel tab-panel">
+            <div class="section-heading"><div><h2>角色</h2><p>用你自己的話寫就好。空著的格子會直接跳過，不用填滿。</p></div><button id="save-character" class="primary">儲存角色</button></div>
+            <form id="character-form">
+              <div class="form-grid">
+                <label class="field span-2">名字<input name="name" required placeholder="角色姓名" /></label>
+                <label class="field">年齡<input name="age" type="text" placeholder="可留空" /></label>
+                <label class="field">職業／身分<input name="occupation" placeholder="可留空" /></label>
+                <label class="field span-2">外表<textarea name="appearance" rows="3" placeholder="長相、穿著、給人的第一印象……"></textarea></label>
+              </div>
+              <div class="subsection-heading"><h3>心理模組</h3><p>每一格附一個問題幫你想。關掉的模組，AI 就讀不到。</p></div>
+              <div id="module-cards" class="module-cards"></div>
+              <div class="chat-actions"><button type="button" id="add-custom-module" class="secondary">＋ 新增自訂模組</button></div>
+              <details class="advanced">
+                <summary>更多基本資料（別名、性別、背景……）</summary>
+                <div class="form-grid">
+                  <label class="field">別名（以逗號分隔）<input name="aliases" placeholder="例：小北, 北北" /></label>
+                  <label class="field">性別<input name="gender" placeholder="可留空" /></label>
+                  <label class="field">代名詞<input name="pronouns" placeholder="可留空" /></label>
+                  <label class="field span-2">背景與人生經歷<textarea name="background" rows="5" placeholder="成長環境、家庭、重要經歷……"></textarea></label>
+                  <label class="field span-2">目前生活狀態<textarea name="current_situation" rows="3" placeholder="目前身處什麼情況？"></textarea></label>
+                  <label class="field span-2">其他設定（JSON 物件）<textarea name="other_information" rows="4" class="code-input" placeholder='例如：{ "world": "北境大學" }'></textarea></label>
+                </div>
+              </details>
+              <div class="chat-actions"><span id="character-dirty" class="dirty-note"></span><button class="primary">儲存角色</button></div>
+            </form>
+
+            <details class="advanced advanced-main">
+              <summary>進階（數字和系統設定，平常不用動）</summary>
+              <section class="advanced-section">
+                <div class="section-heading"><div><h3>心理數值</h3><p>數值只用於角色演繹，不是臨床心理測量。</p></div><button id="save-state" class="primary">儲存心理數值</button></div>
+                <form id="state-form" class="state-form">
+              <section><h3>情緒座標</h3><div class="form-grid"><label class="field">情緒效價（-100～100）<input name="valence" type="number" min="-100" max="100" /></label><label class="field">喚起程度（0～100）<input name="arousal" type="number" min="0" max="100" /></label></div></section>
+              <section><h3>預設心理指標</h3><div class="form-grid metrics"><label class="field">安全感<input name="security" type="number" min="0" max="100" /></label><label class="field">焦慮<input name="anxiety" type="number" min="0" max="100" /></label><label class="field">孤獨感<input name="loneliness" type="number" min="0" max="100" /></label><label class="field">情緒穩定度<input name="emotional_stability" type="number" min="0" max="100" /></label></div></section>
+              <section class="form-grid"><label class="field">目前情緒（JSON 物件）<textarea name="emotions" rows="5" class="code-input" placeholder='例如：{ "joy": 20, "grief": 40 }'></textarea></label><label class="field">自訂指標（JSON 物件）<textarea name="custom_metrics" rows="5" class="code-input" placeholder='例如：{ "curiosity": 60 }'></textarea></label></section>
+            </form>
+              </section>
+              <section class="advanced-section">
+                <div class="section-heading"><div><h3>關係數值</h3><p>由你手動設定；目前 AI 不會自行更動。</p></div><button id="add-relationship" class="primary">＋ 新增關係</button></div>
+                <div class="module-layout"><aside id="relationship-list" class="module-list"></aside><article id="relationship-editor" class="module-editor empty-module">選取左側關係，開始編輯它的維度。</article></div>
+              </section>
+              <section class="advanced-section">
+                <div><h3>記憶容量</h3><p class="muted">超出上限時只會阻止新增，不會自動刪除或合併舊記憶。</p></div>
+                <form id="memory-settings-form" class="memory-settings-grid">
+                <div class="memory-limit"><strong>核心記憶</strong><label class="field">最多筆數<input name="core_max_items" type="number" min="1" max="500" /></label><label class="field">每筆文字上限<input name="core_max_chars" type="number" min="40" max="5000" /></label></div>
+                <div class="memory-limit"><strong>重要記憶</strong><label class="field">最多筆數<input name="important_max_items" type="number" min="1" max="500" /></label><label class="field">每筆文字上限<input name="important_max_chars" type="number" min="40" max="5000" /></label></div>
+                <div class="memory-limit"><strong>普通記憶</strong><label class="field">最多筆數<input name="ordinary_max_items" type="number" min="1" max="500" /></label><label class="field">每筆文字上限<input name="ordinary_max_chars" type="number" min="40" max="5000" /></label></div>
+                <div class="memory-settings-actions"><button class="primary">儲存記憶容量</button></div>
+              </form>
+              </section>
+              <section class="advanced-section">
+                <div class="section-heading"><div><h3>完整資料</h3><p>給檢查和除錯用。</p></div><button id="copy-json" class="secondary">複製 JSON</button></div>
+                <pre id="json-preview" class="json-preview"></pre>
+              </section>
+            </details>
+          </section>
+          <section id="panel-observer" class="panel tab-panel" hidden>
+            <div class="section-heading"><div><h2>觀察者</h2><p>僅在你主動開啟此頁時顯示；不會在聊天中自動曝光角色的內在資料。</p></div><span class="observer-badge">只讀</span></div>
+            <section class="observer-section"><h3>目前心理狀態</h3><div id="observer-state" class="observer-metrics"></div></section>
+            <section class="observer-section"><div class="observer-title"><h3>已確認記憶</h3><span id="observer-memory-count" class="badge">0</span></div><div id="observer-memories" class="observer-memories"></div></section>
+            <section class="observer-section"><h3>關係資料</h3><p id="observer-relationships" class="observer-empty"></p><div id="observer-relationship-list" class="observer-relationships"></div></section>
+          </section>
+
+        </section>
+      </main>
+    </div>
+    <div id="toast" class="toast" role="status"></div>
+    <script src="/static/app.js"></script>
+  </body>
+</html>

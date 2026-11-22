@@ -18,10 +18,24 @@ DEFAULT_STATE = {
     "custom_metrics": {}, "last_updated": None,
 }
 PRESET_MODULES = {
+    "free": "自由描述",
     "personality": "人格特質", "values": "價值觀", "attachment": "依附與親密關係",
     "trauma": "創傷與負面經歷", "coping": "防衛與應對機制",
     "communication": "溝通方式", "goals": "需求與目標", "boundaries": "個人界線",
     "custom": "自訂模組",
+}
+# 角色頁每個模組上方的引導問題；只是提示，不會送給 AI。
+MODULE_GUIDES = {
+    "free": "想到什麼就寫什麼。不知道該放哪一格的，也可以寫在這裡。",
+    "personality": "他平常是個什麼樣的人？",
+    "values": "他覺得什麼最重要？什麼事他看不起？",
+    "attachment": "他靠近別人的時候是什麼樣子？",
+    "trauma": "有什麼過去，到現在還影響著他？",
+    "coping": "難受的時候，他會怎麼處理？",
+    "communication": "他說話是什麼樣子？直接、繞圈、還是愛開玩笑？",
+    "goals": "他現在想要什麼？缺什麼？",
+    "boundaries": "什麼事他絕對不讓人碰？",
+    "custom": "這個模組想寫什麼都可以。",
 }
 MEMORY_IMPORTANCE = {"ordinary", "important", "core"}
 DEFAULT_MEMORY_SETTINGS = {
@@ -57,7 +71,7 @@ def new_module(module_type: str, name: str | None = None) -> dict[str, Any]:
     return {
         "module_id": f"module_{uuid4().hex}", "type": chosen_type,
         "name": (name or PRESET_MODULES.get(chosen_type, chosen_type)).strip(),
-        "enabled": True, "data": {}, "notes": "",
+        "enabled": True, "text": "", "data": {}, "notes": "",
     }
 
 
@@ -139,6 +153,8 @@ def normalize(document: Any, *, generate_id: bool = False) -> dict[str, Any]:
         clean.setdefault("type", "custom")
         clean.setdefault("name", PRESET_MODULES.get(str(clean["type"]), str(clean["type"])))
         clean.setdefault("enabled", True); clean.setdefault("data", {}); clean.setdefault("notes", "")
+        # text 是模組的主要內容（用講的）；data 保留給舊格式的 JSON 內容，不會被刪除。
+        clean["text"] = clean["text"] if isinstance(clean.get("text"), str) else ""
         if not isinstance(clean["data"], dict): raise ValueError("module.data 必須是 JSON 物件。")
         clean["enabled"] = bool(clean["enabled"])
         normalized_modules.append(clean)

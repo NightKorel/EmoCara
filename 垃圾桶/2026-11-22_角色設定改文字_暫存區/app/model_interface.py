@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+from copy import deepcopy
 import os
 from pathlib import Path
 from typing import Any, Protocol
@@ -70,9 +71,29 @@ class CharacterModel(Protocol):
         ...
 
 
+def character_for_prompt(character: dict[str, Any]) -> dict[str, Any]:
+    """給 AI 看的角色資料：只放開著、而且有寫內容的模組，空白模組直接跳過。"""
+    view = deepcopy(character)
+    modules = []
+    for module in character.get("modules", []):
+        if not isinstance(module, dict) or not module.get("enabled", True):
+            continue
+        text = module.get("text") if isinstance(module.get("text"), str) else ""
+        data = module.get("data") if isinstance(module.get("data"), dict) else {}
+        if not text.strip() and not data:
+            continue
+        item = {"name": module.get("name", "")}
+        if text.strip(): item["text"] = text.strip()
+        if data: item["data"] = data
+        if isinstance(module.get("notes"), str) and module["notes"].strip(): item["notes"] = module["notes"].strip()
+        modules.append(item)
+    view["modules"] = modules
+    return view
+
+
 def build_state_proposal_prompt(character: dict[str, Any], event: dict[str, Any]) -> str:
     """固定契約，讓每個提供者請求相同且可驗證的資料形狀。"""
-    supplied = json.dumps({"character": character, "event": event}, ensure_ascii=False)
+    supplied = json.dumps({"character": character_for_prompt(character), "event": event}, ensure_ascii=False)
     return f"""你是角色心理狀態的模擬器。根據下列角色資料與事件，提出一個保守、可解釋的狀態變化提案。
 
 你不是資料庫，也不能修改角色設定、記憶、關係、模組或 metadata。只可提出數值狀態的變化。
@@ -95,7 +116,7 @@ state_patch 可只包含實際需要改動的欄位，但不得為空。不要�
 def build_chat_prompt(character: dict[str, Any], recent_turns: list[dict[str, Any]], user_message: str) -> str:
     """產生自足的聊天提示詞，供 API 與手動網頁 AI 共用。"""
     supplied = json.dumps(
-        {"character": character, "recent_turns": recent_turns, "user_message": user_message},
+        {"character": character_for_prompt(character), "recent_turns": recent_turns, "user_message": user_message},
         ensure_ascii=False,
     )
     return f"""你是角色互動模擬器。請以角色自己的觀點、界線和語氣回覆使用者，
