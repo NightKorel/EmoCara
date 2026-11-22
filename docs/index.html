@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>情緒模擬器｜角色檔案</title>
-    <link rel="stylesheet" href="styles.css" />
+    <link rel="stylesheet" href="styles.css?v=0.1.15" />
     <script>
       // 先套上深淺色，免得打開時先閃一下白色。預設深色。
       try { const s = JSON.parse(localStorage.getItem("emocara:settings") || "{}"); document.documentElement.dataset.theme = s.theme === "light" ? "light" : "dark"; }
@@ -14,7 +14,7 @@
   <body>
     <div class="app-shell">
       <aside class="sidebar">
-        <div class="brand"><span class="spark">✦</span><div><strong>情緒模擬器</strong><small>角色檔案 v0.1.14</small></div></div>
+        <div class="brand"><span class="spark">✦</span><div><strong>情緒模擬器</strong><small>角色檔案 v0.1.15</small></div></div>
         <button id="new-character" class="primary wide">＋ 新增角色</button>
         <label class="import-button wide">⇧ 匯入角色<input id="import-file" type="file" accept="application/json,.json" /></label>
         <nav><p class="nav-label">我的角色</p><div id="character-list" class="character-list"></div></nav>
@@ -161,9 +161,9 @@
       <label class="field">Gemini 模型名稱<input name="gemini_model" placeholder="gemini-3.8-flash" /></label>
       <p class="muted">只用手動模式的話，這裡可以不填。</p>
       <div class="dialog-actions"><button value="cancel" class="secondary">取消</button><button value="default" class="primary">儲存</button></div></form></dialog>
-    <script src="core.js"></script>
-    <script src="store.js"></script>
-    <script src="ai.js"></script>
-    <script src="app.js"></script>
+    <script src="core.js?v=0.1.15"></script>
+    <script src="store.js?v=0.1.15"></script>
+    <script src="ai.js?v=0.1.15"></script>
+    <script src="app.js?v=0.1.15"></script>
   </body>
 </html>
