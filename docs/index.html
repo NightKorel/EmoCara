@@ -4,16 +4,17 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, interactive-widget=resizes-content" />
     <title>情緒模擬器｜角色檔案</title>
-    <link rel="stylesheet" href="styles.css?v=0.1.27" />
+    <link rel="stylesheet" href="styles.css?v=0.1.28" />
     <script>
       // 先套上深淺色，免得打開時先閃一下白色。預設深色。
       try { const s = JSON.parse(localStorage.getItem("emocara:settings") || "{}"); document.documentElement.dataset.theme = s.theme === "light" ? "light" : "dark"; }
       catch { document.documentElement.dataset.theme = "dark"; }
       // 主題色（色相環）也先套上，免得先閃一下原本的青綠色。app.js 換色時也用這個函式。
-      // 每個主色：[色相差, 飽和度, 亮度]，照原本配色算出來的，選回 176 就跟預設幾乎一樣。
+      // 每個主色：[色相差, 飽和度, 亮度]。色相一律跟主色一樣（差 0）。
+      // 2026-11-22 納可：泡泡和比較飽和的背景調淡一點、色相不要跟主色差太多 → 主色和左邊欄的飽和度降一點。
       window.EmoHueTones = {
-        light: { "--accent": [0, 39, 35], "--accent-dark": [1, 47, 25], "--soft": [-14, 24, 92], "--c213b3d": [9, 30, 18] },
-        dark: { "--accent": [0, 39, 40], "--accent-dark": [-3, 45, 69], "--soft": [-1, 30, 17], "--c213b3d": [9, 25, 11], "--accent-hover": [0, 35, 48] },
+        light: { "--accent": [0, 33, 36], "--accent-dark": [0, 40, 26], "--soft": [0, 22, 92], "--c213b3d": [0, 22, 18] },
+        dark: { "--accent": [0, 33, 40], "--accent-dark": [0, 40, 69], "--soft": [0, 25, 17], "--c213b3d": [0, 18, 11], "--accent-hover": [0, 30, 47] },
       };
       window.EmoApplyHue = function (hue, theme) {
         const tones = window.EmoHueTones, root = document.documentElement.style;
@@ -28,7 +29,7 @@
   <body>
     <div class="app-shell">
       <aside class="sidebar">
-        <div class="brand"><span class="spark">✦</span><div><strong>情緒模擬器</strong><small>角色檔案 v0.1.27</small></div></div>
+        <div class="brand"><span class="spark">✦</span><div><strong>情緒模擬器</strong><small>角色檔案 v0.1.28</small></div></div>
         <button id="new-character" class="primary wide">＋ 新增角色</button>
         <label class="import-button wide">⇧ 匯入角色<input id="import-file" type="file" accept="application/json,.json,text/plain,.txt" /></label>
         <button id="card-open" class="secondary wide settings-button" type="button">▤ 角卡</button>
@@ -197,9 +198,9 @@
       <label class="field">手機按「放大」時<select name="phone_zoom"><option value="fullscreen">真的全螢幕（連網址列都藏起來）</option><option value="page">只在網頁裡放大</option></select></label>
       <p class="muted">只對手機、平板有用，電腦一律是網頁裡放大。iPhone 的瀏覽器不讓網頁進全螢幕，在 iPhone 上一律是網頁裡放大。</p>
       <div class="dialog-actions"><button value="cancel" class="secondary">取消</button><button value="default" class="primary">儲存</button></div></form></dialog>
-    <script src="core.js?v=0.1.27"></script>
-    <script src="store.js?v=0.1.27"></script>
-    <script src="ai.js?v=0.1.27"></script>
-    <script src="app.js?v=0.1.27"></script>
+    <script src="core.js?v=0.1.28"></script>
+    <script src="store.js?v=0.1.28"></script>
+    <script src="ai.js?v=0.1.28"></script>
+    <script src="app.js?v=0.1.28"></script>
   </body>
 </html>
