@@ -9,7 +9,7 @@
   <body>
     <div class="app-shell">
       <aside class="sidebar">
-        <div class="brand"><span class="spark">✦</span><div><strong>情緒模擬器</strong><small>角色檔案 v0.1.6</small></div></div>
+        <div class="brand"><span class="spark">✦</span><div><strong>情緒模擬器</strong><small>角色檔案 v0.1.7</small></div></div>
         <button id="new-character" class="primary wide">＋ 新增角色</button>
         <label class="import-button wide">⇧ 匯入角色<input id="import-file" type="file" accept="application/json,.json" /></label>
         <nav><p class="nav-label">我的角色</p><div id="character-list" class="character-list"></div></nav>
@@ -34,6 +34,12 @@
 
           <section id="panel-chat" class="panel tab-panel chat-panel" hidden>
             <div class="chat-topbar"><h2 id="chat-title">聊天</h2><span id="model-status" class="model-status">檢查模型設定中…</span></div>
+            <div class="chat-tools">
+              <label class="time-switch" title="開著：他知道現在幾點、隔了多久。關著：時間不流動。"><input type="checkbox" id="real-time-toggle"> 現實時間</label>
+              <select id="chat-select" aria-label="切換聊天視窗" hidden></select>
+              <button id="new-chat" class="text-button" type="button">開新聊天</button>
+            </div>
+            <div id="old-chat-banner" class="old-chat-banner" hidden>這是舊的聊天，只能看，不能接著聊。<button id="back-to-current-chat" class="text-button" type="button">回到目前的聊天</button></div>
             <div id="chat-history" class="chat-history" aria-live="polite"></div>
             <section id="manual-chat-workflow" class="manual-workflow" hidden>
               <p class="manual-step">1. 按「複製提示詞」，貼給網頁上的 AI。</p>
@@ -41,6 +47,7 @@
               <textarea id="manual-chat-prompt" rows="8" class="code-input" readonly hidden></textarea>
               <p class="manual-step">2. 複製 AI 回的整段，回來按「從剪貼簿貼上」。</p>
               <div class="chat-actions left"><button id="paste-chat-response" class="primary" type="button">從剪貼簿貼上</button><button id="cancel-manual-chat" class="secondary" type="button">取消這句</button></div>
+              <p id="paste-help" class="paste-help" hidden></p>
               <details class="manual-fallback"><summary>貼不進來？改成自己貼</summary>
                 <textarea id="manual-chat-response" rows="4" class="code-input" placeholder="整段貼上就好，被 ```json 包住也可以。"></textarea>
                 <div class="chat-actions"><button id="parse-chat-response" class="secondary" type="button">用框裡的內容</button></div>
@@ -120,6 +127,20 @@
       </main>
     </div>
     <div id="toast" class="toast" role="status"></div>
+    <dialog id="time-dialog" class="choice-dialog"><form method="dialog">
+      <h2>打開現實時間</h2>
+      <p id="time-dialog-text"></p>
+      <button value="now" class="primary choice">算「剛剛」<small>他覺得你們剛剛還在聊，從現在開始才感覺到時間流動。</small></button>
+      <button value="real" class="secondary choice">照真實時間<small id="time-dialog-real"></small></button>
+      <button value="cancel" class="text-button">取消，不打開</button>
+    </form></dialog>
+    <dialog id="new-chat-dialog" class="choice-dialog"><form method="dialog">
+      <h2>開新聊天</h2>
+      <p>要讓他記得以前的事嗎？</p>
+      <button value="keep" class="primary choice">沿用記憶<small id="new-chat-keep-text"></small></button>
+      <button value="fresh" class="secondary choice">不沿用記憶<small id="new-chat-fresh-text"></small></button>
+      <button value="cancel" class="text-button">取消</button>
+    </form></dialog>
     <dialog id="settings-dialog"><form method="dialog" id="settings-form"><div class="dialog-heading"><h2>設定</h2><button value="cancel" class="icon-button" aria-label="關閉">×</button></div>
       <p class="muted">這些設定只存在這台裝置的瀏覽器裡，不會上傳到 GitHub。換一台裝置要再填一次。</p>
       <label class="field">Gemini 鑰匙<input name="gemini_api_key" type="password" autocomplete="off" placeholder="從 Google AI Studio 複製過來" /></label>

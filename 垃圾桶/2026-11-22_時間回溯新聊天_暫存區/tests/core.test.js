@@ -187,3 +187,77 @@ test("提示詞會請 AI 寫心裡的話，並把之前沒說出口的想法一�
   assert.match(prompt, /"inner_thought"/);
   assert.match(prompt, /他是不是發現我在生氣/);
 });
+
+// ---------- 時間、回溯、新聊天（2026-11-22） ----------
+const { currentChatId, turnsInChat, startNewChat, freshCopy, snapshotOf, trimSnapshots, rewindKind, rewind, REWIND_LIMIT } = Core;
+
+test("時間關著：送給 AI 的資料沒有任何時間", () => {
+  const character = normalize(newCharacter("維伊"));
+  const prompt = buildChatPrompt(character, [{ id: "t1", created_at: "2026-11-20T10:00:00.000Z", user_message: "嗨", character_reply: "嗯", before: snapshotOf(character) }], "在嗎");
+  assert.doesNotMatch(prompt, /created_at|updated_at|2026-11-20|"time"/);
+  assert.doesNotMatch(prompt, /"before"/);
+  assert.match(prompt, /沒有現實時間/);
+});
+
+test("時間開著：有現在時間和每句的時間；選「剛剛」時，之前的對話算在打開那一刻", () => {
+  const character = normalize({ ...newCharacter("維伊"), chat_settings: { real_time: true, time_since: "2026-11-22T12:00:00.000Z" } });
+  const turns = [
+    { id: "a", created_at: "2026-09-01T12:00:00.000Z", user_message: "很久以前", character_reply: "嗯" },
+    { id: "b", created_at: "2026-11-22T13:00:00.000Z", user_message: "剛剛", character_reply: "嗯" },
+  ];
+  const view = Core.turnsForPrompt(character, turns);
+  assert.equal(view[0].time, Core.describeTime("2026-11-22T12:00:00.000Z"));
+  assert.equal(view[1].time, Core.describeTime("2026-11-22T13:00:00.000Z"));
+  assert.match(buildChatPrompt(character, turns, "在嗎", { now: "2026-11-22T14:00:00.000Z" }), /現在的現實時間是/);
+});
+
+test("開新聊天：舊對話留在舊視窗，新視窗是空的", () => {
+  const character = normalize(newCharacter("維伊"));
+  assert.equal(currentChatId(character), "chat_first");
+  const next = startNewChat(character);
+  assert.equal(next.chats.length, 2);
+  assert.notEqual(currentChatId(next), "chat_first");
+  const turns = [{ id: "a", user_message: "舊的", character_reply: "嗯" }];
+  assert.equal(turnsInChat(turns, "chat_first").length, 1);
+  assert.equal(turnsInChat(turns, currentChatId(next)).length, 0);
+});
+
+test("不沿用記憶：複製的新角色沒有記憶、心情回初始，原本的不受影響", () => {
+  const character = normalize(newCharacter("維伊"));
+  character.memories.push(Core.newMemory("一起看過海", "core", "很重要"));
+  character.state.mood.valence = -80;
+  const copy = freshCopy(character);
+  assert.notEqual(copy.character_id, character.character_id);
+  assert.equal(copy.profile.name, "維伊（新的開始）");
+  assert.equal(copy.memories.length, 0);
+  assert.equal(copy.state.mood.valence, 0);
+  assert.equal(character.memories.length, 1);
+});
+
+test("回溯：心情和記憶退回講這句之前，這句和後面的對話消失", () => {
+  const start = normalize(newCharacter("維伊"));
+  const after1 = Core.clone(start); after1.state.mood.valence = -50; after1.memories.push(Core.newMemory("他好像在試探我", "important", "誤會"));
+  const turns = [
+    { id: "t1", user_message: "第一句", character_reply: "嗯", before: snapshotOf(start) },
+    { id: "t2", user_message: "第二句", character_reply: "喔", before: snapshotOf(after1) },
+  ];
+  const result = rewind(after1, turns, "t1");
+  assert.equal(result.kind, "full");
+  assert.equal(result.turns.length, 0);
+  assert.equal(result.removed, 2);
+  assert.equal(result.message, "第一句");
+  assert.equal(result.character.state.mood.valence, 0);
+  assert.equal(result.character.memories.length, 0);
+});
+
+test("回溯：舊對話沒存當時的樣子，只能退文字；舊視窗和太早的不能回溯", () => {
+  const character = normalize(newCharacter("維伊"));
+  const turns = [{ id: "old", user_message: "舊", character_reply: "嗯" }];
+  assert.equal(rewindKind(character, turns, "old"), "text");
+  assert.equal(rewindKind(startNewChat(character), turns, "old"), null);
+  const many = Array.from({ length: REWIND_LIMIT + 5 }, (_, i) => ({ id: `t${i}`, user_message: String(i), character_reply: "嗯", before: snapshotOf(character) }));
+  assert.equal(rewindKind(character, many, "t0"), null);
+  assert.equal(rewindKind(character, many, `t${REWIND_LIMIT + 4}`), "full");
+  const trimmed = trimSnapshots(many, "chat_first");
+  assert.equal(trimmed.filter((turn) => "before" in turn).length, REWIND_LIMIT);
+});

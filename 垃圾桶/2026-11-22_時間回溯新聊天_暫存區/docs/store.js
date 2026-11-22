@@ -61,6 +61,14 @@
       try { return store.saveCharacter(document); }
       catch (error) { write(TURNS + id, before); throw error; }
     },
+    // 回溯、開新聊天用：整份對話紀錄和角色一起換掉；角色存失敗就把對話紀錄換回去。
+    saveTurnsAndCharacter(document, turns) {
+      const id = document.character_id;
+      const before = store.allTurns(id);
+      write(TURNS + id, Array.isArray(turns) ? turns : []);
+      try { return store.saveCharacter(document); }
+      catch (error) { write(TURNS + id, before); throw error; }
+    },
     getSettings() { return read(SETTINGS, {}) || {}; },
     saveSettings(settings) { write(SETTINGS, settings); },
   };

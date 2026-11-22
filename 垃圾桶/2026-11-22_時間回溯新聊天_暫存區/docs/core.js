@@ -175,6 +175,11 @@
     result.memories = Array.isArray(result.memories) ? result.memories : [];
     result.memory_settings = normalizeMemorySettings(result.memory_settings);
     result.relationships = Array.isArray(result.relationships) ? result.relationships : [];
+    // 聊天設定：real_time＝現實時間開關；time_since＝打開時選「剛剛」的那一刻（之前的對話都算發生在這一刻）。
+    const chatSettings = objectOr(result.chat_settings, {});
+    result.chat_settings = { real_time: chatSettings.real_time === true, time_since: typeof chatSettings.time_since === "string" ? chatSettings.time_since : null };
+    // 聊天視窗：最後一個是目前的視窗。空的＝只有最早那個視窗（chat_first）。
+    result.chats = Array.isArray(result.chats) ? result.chats.filter((chat) => isObject(chat) && typeof chat.chat_id === "string") : [];
     const metadata = objectOr(result.metadata, {});
     if (!("created_at" in metadata)) metadata.created_at = timestamp();
     if (!("updated_at" in metadata)) metadata.updated_at = timestamp();
@@ -349,9 +354,98 @@
     return view;
   }
 
-  function buildChatPrompt(character, recentTurns, userMessage) {
-    const supplied = JSON.stringify({ character: characterForPrompt(character), recent_turns: recentTurns, user_message: userMessage });
-    return `你是角色互動模擬器。請以角色自己的觀點、界線和語氣回覆使用者，
+  // ---------- 聊天視窗 ----------
+  const FIRST_CHAT_ID = "chat_first";
+  const REWIND_LIMIT = 30; // 最近幾句可以「從這句重來」
+  function currentChatId(character) { const chats = character?.chats || []; return chats.length ? chats[chats.length - 1].chat_id : FIRST_CHAT_ID; }
+  function turnChatId(turn) { return typeof turn?.chat_id === "string" ? turn.chat_id : FIRST_CHAT_ID; }
+  function turnsInChat(turns, chatId) { return (Array.isArray(turns) ? turns : []).filter((turn) => turnChatId(turn) === chatId); }
+  function startNewChat(character, now = timestamp()) {
+    const updated = clone(character);
+    if (!updated.chats.length) updated.chats.push({ chat_id: FIRST_CHAT_ID, started_at: updated.metadata?.created_at || now });
+    updated.chats.push({ chat_id: `chat_${hexId()}`, started_at: now });
+    return updated;
+  }
+  // 不沿用記憶：複製一份新的他。設定都一樣，記憶清空、心情回到初始值、沒有聊天紀錄。
+  function freshCopy(character) {
+    const copy = normalize(clone(character), { generateId: true });
+    const now = timestamp();
+    copy.profile.name = `${character.profile?.name || "未命名角色"}（新的開始）`;
+    copy.state = clone(DEFAULT_STATE); copy.memories = []; copy.chats = [];
+    copy.chat_settings = { ...copy.chat_settings, time_since: null };
+    copy.metadata = { ...copy.metadata, created_at: now, updated_at: now, import_source: null };
+    return copy;
+  }
+
+  // ---------- 回溯 ----------
+  // 每句存檔時順便存「講這句之前他的樣子」（心情、記憶），只留最近 REWIND_LIMIT 句，免得太佔空間。
+  function snapshotOf(character) { return clone({ state: character.state, memories: character.memories }); }
+  function trimSnapshots(turns, chatId) {
+    const keep = new Set(turnsInChat(turns, chatId).slice(-REWIND_LIMIT).map((turn) => turn.id));
+    return turns.map((turn) => { if (keep.has(turn.id) || !("before" in turn)) return turn; const { before, ...rest } = turn; return rest; });
+  }
+  // 能不能從這句重來："full"＝心情記憶都能退；"text"＝只能退文字（舊對話沒存當時的樣子）；null＝不能。
+  function rewindKind(character, turns, turnId) {
+    const recent = turnsInChat(turns, currentChatId(character)).slice(-REWIND_LIMIT);
+    const turn = recent.find((item) => item.id === turnId);
+    if (!turn) return null;
+    return isObject(turn.before) ? "full" : "text";
+  }
+  function rewind(character, turns, turnId) {
+    const kind = rewindKind(character, turns, turnId);
+    if (!kind) throw new Error("這句太早了，或在舊的聊天視窗裡，不能從這句重來。");
+    const index = turns.findIndex((item) => item.id === turnId), chatId = currentChatId(character);
+    const target = turns[index];
+    const removed = turns.filter((turn, i) => i >= index && turnChatId(turn) === chatId);
+    const remaining = turns.filter((turn, i) => !(i >= index && turnChatId(turn) === chatId));
+    const updated = clone(character);
+    if (kind === "full") { updated.state = clone(target.before.state); updated.memories = clone(target.before.memories); }
+    return { character: updated, turns: remaining, removed: removed.length, message: target.user_message, kind };
+  }
+
+  // ---------- 時間 ----------
+  const WEEKDAYS = ["日", "一", "二", "三", "四", "五", "六"];
+  function describeTime(iso) {
+    const d = new Date(iso); if (Number.isNaN(d.getTime())) return "";
+    const h = d.getHours(), part = h < 5 ? "凌晨" : h < 11 ? "早上" : h < 13 ? "中午" : h < 18 ? "下午" : "晚上";
+    const hour12 = h % 12 === 0 ? 12 : h % 12;
+    return `${d.getFullYear()}年${d.getMonth() + 1}月${d.getDate()}日 星期${WEEKDAYS[d.getDay()]} ${part} ${hour12}:${String(d.getMinutes()).padStart(2, "0")}`;
+  }
+  const TIME_KEYS = new Set(["created_at", "updated_at", "last_updated", "last_recalled_at", "started_at", "time_since"]);
+  function withoutTimes(value) {
+    if (Array.isArray(value)) return value.map(withoutTimes);
+    if (!isObject(value)) return value;
+    const out = {}; for (const [key, item] of Object.entries(value)) if (!TIME_KEYS.has(key)) out[key] = withoutTimes(item);
+    return out;
+  }
+  // 送給 AI 的最近對話：只放對話內容；開著現實時間才附上時間。
+  function turnsForPrompt(character, recentTurns) {
+    const settings = character.chat_settings || {};
+    return (recentTurns || []).map((turn) => {
+      const view = { user_message: turn.user_message, character_reply: turn.character_reply };
+      if (turn.inner_thought !== undefined) view.inner_thought = turn.inner_thought;
+      if (turn.state_proposal) view.state_proposal = turn.state_proposal;
+      if (turn.memory_candidates?.length) view.memory_candidates = turn.memory_candidates;
+      if (settings.real_time && turn.created_at) {
+        const at = settings.time_since && turn.created_at < settings.time_since ? settings.time_since : turn.created_at;
+        view.time = describeTime(at);
+      }
+      return view;
+    });
+  }
+
+  function buildChatPrompt(character, recentTurns, userMessage, { now = timestamp() } = {}) {
+    const realTime = character.chat_settings?.real_time === true;
+    const view = characterForPrompt(character);
+    delete view.chats; delete view.chat_settings;
+    const supplied = JSON.stringify({ character: realTime ? view : withoutTimes(view), recent_turns: turnsForPrompt(character, recentTurns), user_message: userMessage });
+    const timeRule = realTime
+      ? `現在的現實時間是：${describeTime(now)}。recent_turns 每一句的 time 是那句話說出的時間。
+角色活在現實時間裡：會感覺到時間經過（例如隔了幾天沒聊、現在是深夜或週末），可以自然地反應，但不必每次都提。`
+      : `這段對話沒有現實時間：不要提到或猜測現實的日期、時刻，也不要假設隔了多久。對角色來說，上一句就是剛剛說的。`;
+    return `${timeRule}
+
+你是角色互動模擬器。請以角色自己的觀點、界線和語氣回覆使用者，
 不得臆測輸入資料沒有的事實，也不必迎合使用者。你不是資料庫，不能修改角色的
 profile、modules、memories、relationships 或 metadata。
 
@@ -407,6 +501,8 @@ ${supplied}`;
     normalize, normalizeMemorySettings, validateStateProposal, applyStateProposal,
     validateUserMessage, validateMemoryCandidates, validateMemoryCapacity, validateChatResponse, applyChatResponse,
     validateRelationship, characterForPrompt, buildChatPrompt, parseJsonObjectText, memoryKey,
+    FIRST_CHAT_ID, REWIND_LIMIT, currentChatId, turnChatId, turnsInChat, startNewChat, freshCopy,
+    snapshotOf, trimSnapshots, rewindKind, rewind, describeTime, withoutTimes, turnsForPrompt,
   };
   root.EmoCore = api;
   if (typeof module !== "undefined" && module.exports) module.exports = api;

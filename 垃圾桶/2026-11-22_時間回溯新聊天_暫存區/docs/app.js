@@ -31,7 +31,7 @@ function loadCharacter(id) {
   try { current = Core.normalize(doc); } catch (error) { toast(`這名角色的資料有問題：${error.message}`, true); return; }
   buildDraft();
   selectedRelationshipId = current.relationships.find((item) => item?.relationship_id)?.relationship_id || null;
-  resetPendingChat(); refreshChatTurns();
+  resetPendingChat(); viewingChatId = null; refreshChatTurns();
   $("#empty-state").hidden = true; $("#editor").hidden = false; render();
 }
 function render() {
@@ -266,9 +266,18 @@ function renderObserver() {
 
 // ---------- 聊天 ----------
 // 一句話的流程：送出 → 等回覆（pendingMessage）→ 回覆出來等你按確認（pendingChat）→ 確認才存。
-let pendingMessage = null, waitingReply = false, scrollChatToEnd = true;
-function refreshChatTurns() { chatTurns = current ? Store.listTurns(current.character_id, 30) : []; }
-function resetPendingChat() { openPeeks.delete("pending"); pendingChat = null; pendingMessage = null; waitingReply = false; }
+let pendingMessage = null, waitingReply = false, scrollChatToEnd = true, viewingChatId = null, openRewind = null;
+function viewedChatId() { return viewingChatId || Core.currentChatId(current); }
+function viewingOldChat() { return Boolean(current && viewingChatId && viewingChatId !== Core.currentChatId(current)); }
+function refreshChatTurns() { chatTurns = current ? Core.turnsInChat(Store.allTurns(current.character_id), viewedChatId()).slice(-30) : []; }
+// 泡泡上的時間：今天只寫幾點，今年寫月日，更早的寫年。
+function shortTime(iso) {
+  const d = new Date(iso); if (!iso || Number.isNaN(d.getTime())) return "";
+  const now = new Date(), hm = `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+  if (d.toDateString() === now.toDateString()) return hm;
+  return d.getFullYear() === now.getFullYear() ? `${d.getMonth() + 1}/${d.getDate()} ${hm}` : `${d.getFullYear()}/${d.getMonth() + 1}/${d.getDate()} ${hm}`;
+}
+function resetPendingChat() { openPeeks.delete("pending"); openRewind = null; pendingChat = null; pendingMessage = null; waitingReply = false; }
 function geminiSettings() { const s = Store.getSettings(); return { apiKey: s.gemini_api_key || "", model: s.gemini_model || AI.DEFAULT_GEMINI_MODEL }; }
 function el(tag, className, text) { const node = document.createElement(tag); if (className) node.className = className; if (text !== undefined) node.textContent = text; return node; }
 function bubble(side, text, extraClass = "") { const row = el("div", `chat-row ${side} ${extraClass}`.trim()); row.append(el("div", "chat-bubble", text)); return row; }
@@ -287,7 +296,7 @@ function peekToggle(key) {
 }
 function savedTurnPeek(turn) {
   const key = turn.id || turn.created_at, wrap = el("div", "chat-peek");
-  const bar = el("div", "chat-under"); bar.append(peekToggle(key)); wrap.append(bar);
+  const bar = el("div", "chat-under"); bar.append(el("span", "chat-time", shortTime(turn.created_at)), peekToggle(key)); wrap.append(bar);
   if (openPeeks.has(key)) {
     const body = innerLines(turn.inner_thought, turn.state_proposal);
     if (turn.memory_candidates?.length) body.append(el("p", "chat-peek-line", `記住了：${turn.memory_candidates.map((m) => m.summary).join("；")}`));
@@ -322,23 +331,118 @@ function renderChat() {
   const name = current.profile.name || "他";
   $("#chat-title").textContent = `跟 ${name} 聊天`;
   const history = $("#chat-history"); history.innerHTML = "";
-  if (!chatTurns.length && !pendingMessage) history.append(el("p", "chat-empty", `還沒有對話。在下面打字，跟 ${name} 說說話吧。`));
+  if (!chatTurns.length && (!pendingMessage || viewingOldChat())) history.append(el("p", "chat-empty", `還沒有對話。在下面打字，跟 ${name} 說說話吧。`));
+  const allTurns = Store.allTurns(current.character_id);
   chatTurns.forEach((turn) => {
-    history.append(bubble("me", turn.user_message));
+    const mine = bubble("me", turn.user_message, "tappable"); mine.firstChild.title = "點一下：從這句重來";
+    mine.firstChild.onclick = () => tapMyBubble(turn, allTurns);
+    if (openRewind === turn.id) { const again = el("button", "rewind-button", "↺ 從這句重來"); again.type = "button"; again.onclick = () => rewindFrom(turn.id); mine.append(again); }
+    history.append(mine);
     const row = bubble("them", turn.character_reply); row.append(savedTurnPeek(turn)); history.append(row);
   });
-  if (pendingMessage) history.append(bubble("me", pendingMessage, "pending"));
-  if (waitingReply) history.append(bubble("them", "……", "typing"));
-  if (pendingChat) { const row = bubble("them", pendingChat.response.reply, "pending"); row.append(pendingBox()); history.append(row); }
+  const old = viewingOldChat();
+  if (pendingMessage && !old) history.append(bubble("me", pendingMessage, "pending"));
+  if (waitingReply && !old) history.append(bubble("them", "……", "typing"));
+  if (pendingChat && !old) { const row = bubble("them", pendingChat.response.reply, "pending"); row.append(pendingBox()); history.append(row); }
   if (scrollChatToEnd) history.scrollTop = history.scrollHeight;
   scrollChatToEnd = true;
   const manual = $("#chat-mode").value === "manual", ready = Boolean(geminiSettings().apiKey);
-  $("#manual-chat-workflow").hidden = !(manual && pendingMessage && !pendingChat);
+  $("#manual-chat-workflow").hidden = old || !(manual && pendingMessage && !pendingChat);
+  $("#chat-form").hidden = old; $(".chat-mode-row").hidden = old; $("#old-chat-banner").hidden = !old;
+  $("#real-time-toggle").checked = current.chat_settings?.real_time === true;
+  renderChatSelect();
   $("#model-status").textContent = manual ? "手動模式：不連網" : (ready ? "自動模式：Gemini" : "還沒在「設定」填 Gemini 鑰匙");
   $("#model-status").classList.toggle("ready", manual || ready);
   $("#chat-generate").disabled = waitingReply;
 }
-function chatPrompt(userMessage) { return Core.buildChatPrompt(current, Store.listTurns(current.character_id, 12), userMessage); }
+function chatPrompt(userMessage) { return Core.buildChatPrompt(current, Core.turnsInChat(Store.allTurns(current.character_id), Core.currentChatId(current)).slice(-12), userMessage); }
+function renderChatSelect() {
+  const select = $("#chat-select"), chats = current.chats || [];
+  select.hidden = chats.length < 2; select.innerHTML = "";
+  chats.forEach((chat, index) => {
+    const option = el("option", "", index === chats.length - 1 ? "目前的聊天" : `舊聊天 ${index + 1}（${shortTime(chat.started_at)} 開始）`);
+    option.value = chat.chat_id; select.append(option);
+  });
+  select.value = viewedChatId();
+}
+function switchChat() { const value = $("#chat-select").value; viewingChatId = value === Core.currentChatId(current) ? null : value; openRewind = null; refreshChatTurns(); renderChat(); renderObserver(); }
+
+// ---------- 回溯：從這句重來 ----------
+function tapMyBubble(turn, allTurns) {
+  if (viewingOldChat()) { toast("舊的聊天只能看，不能從這句重來。", true); return; }
+  if (!Core.rewindKind(current, allTurns, turn.id)) { toast(`只有最近 ${Core.REWIND_LIMIT} 句能從那句重來，這句太早了。`, true); return; }
+  openRewind = openRewind === turn.id ? null : turn.id;
+  const history = $("#chat-history"), top = history.scrollTop; scrollChatToEnd = false; renderChat(); history.scrollTop = top;
+}
+function rewindFrom(turnId) {
+  try {
+    const result = Core.rewind(current, Store.allTurns(current.character_id), turnId);
+    const lines = [`從「${result.message.slice(0, 30)}${result.message.length > 30 ? "……" : ""}」這句重來？`, "",
+      `・這句和後面的對話（共 ${result.removed} 句）會消失，找不回來。`];
+    if (result.kind === "full") lines.push("・他的心情、記住的事、心裡的話，會退回你講這句之前。");
+    else lines.push("・注意：這句是更新前的舊對話，沒有存當時他的樣子。對話會消失，但他現在的心情和記住的事退不回去，會維持現在的樣子。");
+    lines.push("・你這句話會放回輸入框，可以改一改重講。");
+    if (pendingMessage) lines.push("・還沒確認的那句也會一起丟掉。");
+    lines.push("", "確定要重來嗎？");
+    if (!confirm(lines.join("\n"))) return;
+    current = Store.saveTurnsAndCharacter(Core.normalize(result.character), result.turns);
+    resetPendingChat(); $("#manual-chat-prompt").value = ""; $("#manual-chat-response").value = "";
+    $("#chat-message").value = result.message; growComposer();
+    refreshChatTurns(); refreshList(); render(); toast("已經回到那句之前");
+  } catch (error) { toast(error.message, true); }
+}
+
+// ---------- 現實時間開關 ----------
+function relativeTime(iso) {
+  const minutes = Math.round((Date.now() - new Date(iso).getTime()) / 60000);
+  if (minutes < 60) return `${Math.max(minutes, 1)} 分鐘前`;
+  if (minutes < 60 * 24) return `${Math.round(minutes / 60)} 小時前`;
+  return `${Math.round(minutes / 60 / 24)} 天前`;
+}
+function toggleRealTime() {
+  const box = $("#real-time-toggle");
+  if (!box.checked) {
+    if (!confirm("關掉現實時間？\n\n・他會不再知道現在幾點、隔了多久，之後的對話時間不流動。\n・泡泡上的時間照樣會記錄，給你看。\n\n確定要關掉嗎？")) { box.checked = true; return; }
+    persist((doc) => ({ ...doc, chat_settings: { ...doc.chat_settings, real_time: false } }), "現實時間關掉了");
+    return;
+  }
+  const last = Core.turnsInChat(Store.allTurns(current.character_id), Core.currentChatId(current)).slice(-1)[0];
+  if (!last) { persist((doc) => ({ ...doc, chat_settings: { real_time: true, time_since: null } }), "現實時間打開了：他會知道現在幾點"); return; }
+  box.checked = false;
+  $("#time-dialog-text").textContent = `上一句是 ${Core.describeTime(last.created_at)} 講的（${relativeTime(last.created_at)}）。對他來說，上一句要算什麼時候？`;
+  $("#time-dialog-real").textContent = `他會知道上一句是 ${relativeTime(last.created_at)}，可能會對隔了多久有反應。`;
+  const dialog = $("#time-dialog"); dialog.returnValue = "cancel";
+  dialog.onclose = () => {
+    if (dialog.returnValue === "now") persist((doc) => ({ ...doc, chat_settings: { real_time: true, time_since: Core.timestamp() } }), "現實時間打開了：之前的對話算剛剛");
+    else if (dialog.returnValue === "real") persist((doc) => ({ ...doc, chat_settings: { real_time: true, time_since: null } }), "現實時間打開了：照真實時間");
+  };
+  dialog.showModal();
+}
+
+// ---------- 開新聊天 ----------
+function openNewChat() {
+  const name = current.profile.name || "他";
+  $("#new-chat-keep-text").textContent = `同一個 ${name}，記得以前的事，換個場景重新開始。現在這段聊天會變成舊聊天：還看得到，但不能接著聊，也不能再從裡面的句子重來。`;
+  $("#new-chat-fresh-text").textContent = `複製一個新的「${name}（新的開始）」：個性設定一樣，記憶清空、心情回到初始，完全不認識你。原本的 ${name} 和聊天紀錄都不會動。`;
+  const dialog = $("#new-chat-dialog"); dialog.returnValue = "cancel";
+  dialog.onclose = () => {
+    const choice = dialog.returnValue; if (choice !== "keep" && choice !== "fresh") return;
+    if (pendingMessage && !confirm("還沒確認的那句會丟掉，確定要開新聊天嗎？")) return;
+    try {
+      if (choice === "keep") {
+        const updated = Core.normalize(Core.startNewChat(current));
+        current = Store.saveTurnsAndCharacter(updated, Core.trimSnapshots(Store.allTurns(current.character_id), Core.currentChatId(updated)));
+        resetPendingChat(); viewingChatId = null; $("#chat-message").value = "";
+        refreshChatTurns(); refreshList(); render(); toast("開了新的聊天，他還記得以前的事");
+      } else {
+        const copy = Store.saveCharacter(Core.freshCopy(current)); Store.replaceTurns(copy.character_id, []);
+        resetPendingChat(); $("#chat-message").value = ""; refreshList(); loadCharacter(copy.character_id); showTab("chat");
+        toast(`開了「${copy.profile.name}」，他不認識你`);
+      }
+    } catch (error) { toast(error.message, true); }
+  };
+  dialog.showModal();
+}
 function selectedMemoryCandidates() { const selected = new Set(pendingChat?.selectedMemoryKeys || []); return (pendingChat?.response.memory_candidates || []).filter((candidate) => selected.has(Core.memoryKey(candidate))); }
 function showChatPreview(userMessage, response) { pendingChat = { userMessage, response, selectedMemoryKeys: [] }; renderChat(); }
 // 這句不算：把剛剛打的字放回輸入框，方便改一改重送。
@@ -353,7 +457,7 @@ async function generateChat(event) {
     if (!manual && !settings.apiKey) throw new Error("還沒填 Gemini 鑰匙。請按左邊的「設定」填好，或改用手動複製貼上。");
     const prompt = chatPrompt(userMessage);
     pendingMessage = userMessage; $("#chat-message").value = ""; growComposer();
-    if (manual) { $("#manual-chat-prompt").value = prompt; $("#manual-chat-response").value = ""; renderChat(); return; }
+    if (manual) { $("#paste-help").hidden = true; $("#manual-chat-prompt").value = prompt; $("#manual-chat-response").value = ""; renderChat(); return; }
     waitingReply = true; renderChat();
     try {
       const text = await AI.askGemini(prompt, settings);
@@ -364,12 +468,18 @@ async function generateChat(event) {
     } catch (error) { waitingReply = false; giveBackMessage(); pendingMessage = null; renderChat(); throw error; }
   } catch (error) { toast(error.message, true); }
 }
+function showPasteHelp(message) { const help = $("#paste-help"); help.textContent = message; help.hidden = false; $(".manual-fallback").open = true; }
 // 按一下就讀剪貼簿（瀏覽器規定一定要按，網頁不能自己偷讀）。讀不到就打開下面的框框讓你自己貼。
 async function pasteChatResponse() {
   if (!pendingMessage) { toast("先在下面打字送出。", true); return; }
-  let text = "";
+  let text = ""; const help = $("#paste-help"); help.hidden = true;
+  if (!navigator.clipboard?.readText) { showPasteHelp("這個瀏覽器不支援一鍵貼上（可能版本太舊，或網頁不是從 https 網址打開）。請點下面「改成自己貼」。"); return; }
   try { text = await navigator.clipboard.readText(); }
-  catch { $(".manual-fallback").open = true; toast("瀏覽器不讓網頁讀剪貼簿，請貼在下面的框框裡。", true); return; }
+  catch {
+    let denied = false; try { denied = (await navigator.permissions?.query({ name: "clipboard-read" }))?.state === "denied"; } catch { /* 有些瀏覽器不能查 */ }
+    showPasteHelp(denied ? "剪貼簿被封鎖了（可能之前跳詢問時按到「封鎖」）。解法：點網址列最左邊的小圖示 →「網站設定」或「權限」→ 剪貼簿改成「允許」，重新整理再按一次。這次先點下面「改成自己貼」。" : "瀏覽器沒讓網頁讀剪貼簿。如果有跳出詢問，請按「允許」再按一次；沒跳的話，請點下面「改成自己貼」。");
+    return;
+  }
   if (!text.trim()) { toast("剪貼簿是空的，先去複製 AI 的回覆。", true); return; }
   $("#manual-chat-response").value = text; parseManualChatResponse();
 }
@@ -393,7 +503,9 @@ function applyPendingChat() {
   try {
     const userMessage = Core.validateUserMessage(pendingChat.userMessage);
     const { updated, response, selected } = Core.applyChatResponse(current, pendingChat.response, selectedMemoryCandidates());
-    current = Store.saveTurn(updated, { contract_version: Core.CHAT_CONTRACT_VERSION, user_message: userMessage, character_reply: response.reply, inner_thought: response.inner_thought, state_proposal: response.state_proposal, memory_candidates: selected });
+    const chatId = Core.currentChatId(current), before = Core.snapshotOf(current);
+    current = Store.saveTurn(updated, { contract_version: Core.CHAT_CONTRACT_VERSION, chat_id: chatId, user_message: userMessage, character_reply: response.reply, inner_thought: response.inner_thought, state_proposal: response.state_proposal, memory_candidates: selected, before });
+    Store.replaceTurns(current.character_id, Core.trimSnapshots(Store.allTurns(current.character_id), chatId));
     resetPendingChat(); $("#manual-chat-prompt").value = ""; $("#manual-chat-response").value = "";
     refreshChatTurns(); refreshList(); render(); $("#chat-message").focus();
   } catch (error) { toast(error.message, true); }
@@ -420,6 +532,8 @@ $("#add-relationship").onclick = addRelationship; $("#import-file").onchange = i
 $("#copy-json").onclick = () => copyText(JSON.stringify(current, null, 2), "完整 JSON 已複製");
 $("#open-settings").onclick = openSettings; $("#settings-form").onsubmit = saveSettings;
 $("#chat-form").onsubmit = generateChat; $("#chat-mode").onchange = renderChat; $("#copy-chat-prompt").onclick = copyChatPrompt; $("#show-chat-prompt").onclick = toggleChatPrompt; $("#parse-chat-response").onclick = parseManualChatResponse; $("#paste-chat-response").onclick = pasteChatResponse; $("#cancel-manual-chat").onclick = discardPendingChat;
+$("#real-time-toggle").onchange = toggleRealTime; $("#new-chat").onclick = openNewChat; $("#chat-select").onchange = switchChat;
+$("#back-to-current-chat").onclick = () => { $("#chat-select").value = Core.currentChatId(current); switchChat(); };
 $("#chat-message").onkeydown = composerKeydown; $("#chat-message").oninput = growComposer;
 document.querySelectorAll(".tab").forEach((button) => { button.onclick = () => showTab(button.dataset.tab); });
 // 展開折起來的區塊時，如果展開的內容跑到畫面外面（例如在頁尾），就捲過去讓它看得到。

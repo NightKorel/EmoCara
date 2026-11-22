@@ -89,3 +89,20 @@ dialog { border:0; padding:0; border-radius:13px; box-shadow:0 18px 60px rgba(20
 .manual-fallback summary { cursor:pointer; }
 .manual-fallback textarea { margin-top:8px; }
 .manual-fallback .chat-actions { margin-top:8px; }
+/* 時間、回溯、新聊天（2026-11-22 v0.1.7） */
+.chat-tools { display:flex; align-items:center; gap:14px; flex-wrap:wrap; padding:8px 22px; border-bottom:1px solid var(--line); font-size:.8rem; color:var(--muted); }
+.time-switch { display:flex; align-items:center; gap:6px; cursor:pointer; }
+.time-switch input { accent-color:var(--accent); width:16px; height:16px; }
+.chat-tools select { border:1px solid #ccd9d6; border-radius:7px; padding:3px 6px; background:#fff; color:var(--ink); font-size:.78rem; max-width:220px; }
+.chat-tools .text-button { margin-left:auto; font-size:.8rem; }
+.old-chat-banner { display:flex; align-items:center; justify-content:center; gap:8px; flex-wrap:wrap; padding:8px 16px; background:#fff6e8; color:#7a5a2c; font-size:.82rem; border-bottom:1px solid #f0e0c4; }
+.chat-time { color:#9aa7ab; font-size:.72rem; }
+.chat-row.me.tappable .chat-bubble { cursor:pointer; }
+.rewind-button { margin-top:4px; border:1px solid #e2c9a8; background:#fff8ee; color:#8a5a22; border-radius:999px; padding:4px 12px; font-size:.78rem; }
+.paste-help { margin:0; padding:9px 11px; border-radius:8px; background:#fff3ea; color:#814d3d; font-size:.82rem; line-height:1.55; }
+.choice-dialog form { display:grid; gap:10px; padding:20px; }
+.choice-dialog h2 { margin:0; font-size:1.1rem; }
+.choice-dialog p { margin:0; color:var(--muted); line-height:1.6; font-size:.88rem; }
+.choice-dialog .choice { display:grid; gap:4px; text-align:left; padding:12px 14px; }
+.choice-dialog .choice small { font-weight:400; opacity:.85; line-height:1.5; font-size:.8rem; }
+@media (max-width:780px) { .chat-tools { padding:8px 15px; } }
