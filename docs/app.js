@@ -280,11 +280,15 @@ function applyCleanup() {
 }
 
 // ---------- 設定（Gemini 鑰匙只存在這台裝置） ----------
-function openSettings() { const s = Store.getSettings(), form = $("#settings-form"); form.gemini_api_key.value = s.gemini_api_key || ""; form.gemini_model.value = s.gemini_model || ""; form.phone_zoom.value = s.phone_zoom === "page" ? "page" : "fullscreen"; form.auto_copy.checked = s.auto_copy !== false; $("#settings-dialog").showModal(); }
+function openSettings() { const s = Store.getSettings(), form = $("#settings-form"); form.gemini_api_key.value = s.gemini_api_key || ""; form.gemini_model.value = s.gemini_model || ""; form.phone_zoom.value = s.phone_zoom === "page" ? "page" : "fullscreen"; form.auto_copy.checked = s.auto_copy !== false; form.style_prompt.value = stylePrompt(); $("#settings-dialog").showModal(); }
+// 風格提示詞：沒存過就用預設；存過（就算是空的）就照玩家寫的。
+function stylePrompt() { try { const saved = Store.getSettings().style_prompt; return typeof saved === "string" ? saved : Core.DEFAULT_STYLE_PROMPT; } catch { return Core.DEFAULT_STYLE_PROMPT; } }
 function saveSettings(event) {
   if (event.submitter?.value === "cancel") return;
   const form = $("#settings-form");
-  try { Store.saveSettings({ ...Store.getSettings(), gemini_api_key: form.gemini_api_key.value.trim(), gemini_model: form.gemini_model.value.trim(), phone_zoom: form.phone_zoom.value, auto_copy: form.auto_copy.checked }); renderChat(); toast("設定已存在這台裝置"); }
+  const style = form.style_prompt.value.trim();
+  if (style.length > Core.MAX_STYLE_PROMPT_LENGTH) { event.preventDefault(); toast(`風格提示詞最多 ${Core.MAX_STYLE_PROMPT_LENGTH} 字，現在是 ${style.length} 字。`, true); return; }
+  try { Store.saveSettings({ ...Store.getSettings(), gemini_api_key: form.gemini_api_key.value.trim(), gemini_model: form.gemini_model.value.trim(), phone_zoom: form.phone_zoom.value, auto_copy: form.auto_copy.checked, style_prompt: style }); renderChat(); toast("設定已存在這台裝置"); }
   catch (error) { toast(error.message, true); }
 }
 
@@ -410,7 +414,7 @@ function renderChat() {
 }
 function chatPrompt(userMessage, manual = false) {
   const all = Store.allTurns(current.character_id);
-  return Core.buildChatPrompt(current, Core.turnsInChat(all, Core.currentChatId(current)).slice(-12), userMessage, { summary: Core.summaryForPrompt(current, all), manual, feeling: Core.latestFeeling(all) });
+  return Core.buildChatPrompt(current, Core.turnsInChat(all, Core.currentChatId(current)).slice(-12), userMessage, { summary: Core.summaryForPrompt(current, all), manual, feeling: Core.latestFeeling(all), style: stylePrompt() });
 }
 // Gemini 失敗時：剛剛那句直接換成手動流程，不用重打。
 // 手動模式：送出時自動複製提示詞（設定可以關掉，預設開）。瀏覽器不讓複製的話就安靜放著，照舊按「複製提示詞」。
@@ -762,6 +766,7 @@ $("#add-custom-module").onclick = addCustomModule;
 $("#memory-settings-form").onsubmit = saveMemorySettings; $("#save-state").onclick = () => $("#state-form").requestSubmit(); $("#state-form").onsubmit = saveState;
 $("#add-relationship").onclick = addRelationship; $("#import-file").onchange = importFile; $("#export-button").onclick = exportCurrent; $("#delete-character").onclick = deleteCharacter;
 $("#copy-json").onclick = () => copyText(JSON.stringify(current, null, 2), "完整 JSON 已複製");
+$("#style-reset").onclick = () => { $("#settings-form").style_prompt.value = Core.DEFAULT_STYLE_PROMPT; toast("風格提示詞換回預設了，按「儲存」才算數"); };
 $("#open-settings").onclick = openSettings; $("#settings-form").onsubmit = saveSettings;
 $("#chat-form").onsubmit = generateChat; $("#chat-mode").onchange = changeChatMode; $("#copy-chat-prompt").onclick = copyChatPrompt; $("#show-chat-prompt").onclick = toggleChatPrompt; $("#parse-chat-response").onclick = parseManualChatResponse; $("#paste-chat-response").onclick = pasteChatResponse; $("#cancel-manual-chat").onclick = discardPendingChat;
 $("#real-time-toggle").onchange = toggleRealTime; $("#proposal-toggle").onchange = toggleProposals; $("#video-toggle").onchange = toggleVideo; $("#theme-toggle").onclick = toggleTheme; $("#chat-zoom").onclick = () => setChatZoom(!document.body.classList.contains("chat-zoomed"));

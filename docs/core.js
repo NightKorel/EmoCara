@@ -11,6 +11,12 @@
   const MAX_INNER_LENGTH = 2000; // 心裡沒說出口的話，最多幾個字
   const MAX_SUMMARY_LENGTH = 500; // 近期摘要（他記得的最近經過），最多幾個字
   const MAX_SCENE_LENGTH = 300; // 視訊模式：鏡頭看得到的描述，最多幾個字
+  // 風格提示詞：玩家在「設定」裡自己寫、可以改；沒改過就用這份預設。清空＝不送風格。
+  const MAX_STYLE_PROMPT_LENGTH = 1000;
+  const DEFAULT_STYLE_PROMPT = `說話像真人在聊天：口語、自然，長短看情況，平常一兩句就好，不長篇大論。
+不用比喻，不堆形容詞，不寫感想或旁白式的總結。
+不重複使用者剛說的話，不要每句都反問。
+不要每句都用「……」或語助詞開頭。`;
   const MAX_FEELING_LENGTH = 200; // 他現在的心情、他對你的感覺，各最多幾個字（提示詞請 AI 寫 100 字以內，這裡放寬一點）
   const MAX_MEMORY_CANDIDATES = 3;
   const MAX_MEMORY_TEXT_LENGTH = 1000;
@@ -703,7 +709,7 @@ ${JSON.stringify(data)}`;
   }
 
   const SPOILER_LINE = "以下是給程式看的資料，含劇透，請直接按複製";
-  function buildChatPrompt(character, recentTurns, userMessage, { now = timestamp(), summary = null, manual = false, feeling = null } = {}) {
+  function buildChatPrompt(character, recentTurns, userMessage, { now = timestamp(), summary = null, manual = false, feeling = null, style = "" } = {}) {
     const realTime = character.chat_settings?.real_time === true;
     const proposalsOn = character.chat_settings?.proposals !== false, videoOn = character.chat_settings?.video !== false;
     const view = compactForPrompt(characterForPrompt(character));
@@ -723,7 +729,10 @@ ${JSON.stringify(data)}`;
 
 你是角色互動模擬器。請以角色自己的觀點、界線和語氣回覆使用者，
 不得臆測輸入資料沒有的事實，也不必迎合使用者。你不能直接修改角色資料${proposalsOn ? "；角色設定如果因為這段對話真的改變了，只能用 profile_proposals 提議，使用者同意才會改" : ""}。
-
+${typeof style === "string" && style.trim() ? `
+使用者指定的寫作風格（reply、scene、inner_thought 都照這個寫）：
+${style.trim()}
+` : ""}
 ${manual ? `回覆的第一行只寫「${SPOILER_LINE}」這一句，接著把 JSON 物件整個放在一個 \`\`\`json 程式碼框裡，程式碼框外面不要再寫任何字（使用者不想被劇透角色的心裡話）。JSON 格式必須是：` : "只回傳 JSON 物件，不要 Markdown 或額外文字。格式必須是："}
 {
   "reply": "角色對使用者說的話",${videoOn ? `
@@ -798,7 +807,7 @@ ${supplied}`;
   }
 
   const api = {
-    SCHEMA_VERSION, CHAT_CONTRACT_VERSION, PRESET_MODULES, MODULE_GUIDES, MEMORY_IMPORTANCE,
+    SCHEMA_VERSION, CHAT_CONTRACT_VERSION, DEFAULT_STYLE_PROMPT, MAX_STYLE_PROMPT_LENGTH, PRESET_MODULES, MODULE_GUIDES, MEMORY_IMPORTANCE,
     DEFAULT_MEMORY_SETTINGS, RELATIONSHIP_DIMENSIONS,
     clone, timestamp, newCharacter, newModule, newMemory, newRelationship,
     normalize, normalizeMemorySettings, validateStateProposal, applyStateProposal,

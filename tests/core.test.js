@@ -493,3 +493,14 @@ test("整理記憶：提示詞帶著目前的記憶；結果要格式對、不�
   assert.throws(() => Core.validateMemoryCleanup(character, { memories: [{ summary: "長".repeat(80), importance: "ordinary", reason: "x" }] }), /上限/);
   assert.throws(() => Core.validateMemoryCleanup(character, [1]), /memories/);
 });
+
+test("風格提示詞：有寫才送給 AI，預設那份可以直接用", () => {
+  const character = newCharacter("維伊");
+  const withStyle = buildChatPrompt(character, [], "嗨", { style: "  說話短一點  " });
+  assert.match(withStyle, /使用者指定的寫作風格/);
+  assert.match(withStyle, /\n說話短一點\n/);
+  assert.doesNotMatch(buildChatPrompt(character, [], "嗨", { style: "   " }), /使用者指定的寫作風格/);
+  assert.doesNotMatch(buildChatPrompt(character, [], "嗨"), /使用者指定的寫作風格/);
+  assert.match(buildChatPrompt(character, [], "嗨", { style: Core.DEFAULT_STYLE_PROMPT }), /不用比喻/);
+  assert.ok(Core.DEFAULT_STYLE_PROMPT.length <= Core.MAX_STYLE_PROMPT_LENGTH);
+});
