@@ -811,6 +811,51 @@ ${supplied}`;
     return value;
   }
 
+  // ---------- 角色列表：資料夾、排法、釘選（只存在這台裝置的設定裡） ----------
+  const LIST_SORTS = { recent_chat: "最近聊過", updated: "最近修改", created: "建立時間", name: "名字", custom: "自訂順序" };
+  function normalizeListLayout(value) {
+    const raw = isObject(value) ? value : {};
+    const folders = (Array.isArray(raw.folders) ? raw.folders : []).filter((f) => isObject(f) && typeof f.id === "string" && typeof f.name === "string" && f.name.trim())
+      .map((f) => ({ id: f.id, name: f.name.trim().slice(0, 40), collapsed: f.collapsed === true }));
+    const folderIds = new Set(folders.map((f) => f.id));
+    const placement = {};
+    if (isObject(raw.placement)) for (const [id, folder] of Object.entries(raw.placement)) if (folderIds.has(folder)) placement[id] = folder;
+    const ids = (list) => [...new Set((Array.isArray(list) ? list : []).filter((id) => typeof id === "string"))];
+    return { sort: Object.hasOwn(LIST_SORTS, raw.sort) ? raw.sort : "recent_chat", folders, placement, pinned: ids(raw.pinned), order: ids(raw.order) };
+  }
+  // 照排法排好全部角色。最近聊過：沒聊過的排最後、照建立時間；自訂：沒排過的接在後面。
+  function sortCharacters(list, layout) {
+    const time = (value) => { const t = Date.parse(value || ""); return Number.isFinite(t) ? t : 0; };
+    const byCreated = (a, b) => time(b.created_at) - time(a.created_at);
+    const items = [...list];
+    if (layout.sort === "recent_chat") return items.sort((a, b) => (time(b.last_chat_at) - time(a.last_chat_at)) || byCreated(a, b));
+    if (layout.sort === "updated") return items.sort((a, b) => (time(b.updated_at) - time(a.updated_at)) || byCreated(a, b));
+    if (layout.sort === "name") return items.sort((a, b) => String(a.name).localeCompare(String(b.name), "zh-Hant") || byCreated(a, b));
+    if (layout.sort === "custom") {
+      const rank = new Map(layout.order.map((id, index) => [id, index]));
+      return items.sort((a, b) => (rank.has(a.id) ? rank.get(a.id) : Infinity) - (rank.has(b.id) ? rank.get(b.id) : Infinity) || byCreated(a, b));
+    }
+    return items.sort(byCreated);
+  }
+  // 分成三塊：釘選（最上面）、各資料夾、沒分類（最下面）。釘選的不會在資料夾裡重複出現。
+  function arrangeCharacters(list, layoutValue) {
+    const layout = normalizeListLayout(layoutValue), sorted = sortCharacters(list, layout), pinned = new Set(layout.pinned);
+    const folders = layout.folders.map((folder) => ({ ...folder, items: sorted.filter((item) => !pinned.has(item.id) && layout.placement[item.id] === folder.id) }));
+    return { sort: layout.sort, pinned: sorted.filter((item) => pinned.has(item.id)), folders, loose: sorted.filter((item) => !pinned.has(item.id) && !layout.placement[item.id]) };
+  }
+  // 自訂順序：在同一塊裡跟上一個／下一個交換位置。direction 是 -1（上移）或 1（下移）。
+  function moveInCustomOrder(list, layoutValue, id, direction) {
+    const layout = normalizeListLayout(layoutValue), arranged = arrangeCharacters(list, { ...layout, sort: "custom" });
+    const section = [arranged.pinned, ...arranged.folders.map((f) => f.items), arranged.loose].find((items) => items.some((item) => item.id === id));
+    const order = sortCharacters(list, { ...layout, sort: "custom" }).map((item) => item.id);
+    if (!section) return { ...layout, order };
+    const index = section.findIndex((item) => item.id === id), other = section[index + direction];
+    if (!other) return { ...layout, order };
+    const a = order.indexOf(id), b = order.indexOf(other.id);
+    [order[a], order[b]] = [order[b], order[a]];
+    return { ...layout, order };
+  }
+
   const api = {
     SCHEMA_VERSION, CHAT_CONTRACT_VERSION, DEFAULT_STYLE_PROMPT, MAX_STYLE_PROMPT_LENGTH, styleFor, PRESET_MODULES, MODULE_GUIDES, MEMORY_IMPORTANCE,
     DEFAULT_MEMORY_SETTINGS, RELATIONSHIP_DIMENSIONS,
@@ -819,6 +864,7 @@ ${supplied}`;
     validateUserMessage, validateMemoryCandidates, validateMemoryCapacity, validateChatResponse, applyChatResponse,
     validateRelationship, characterForPrompt, buildChatPrompt, parseJsonObjectText, memoryKey,
     MAX_PROFILE_PROPOSALS, PROPOSAL_FIELDS, PROPOSAL_REMINDER, validateProfileProposals, addProposals, activeProposals, resolveProposal, newTurnId,
+    LIST_SORTS, normalizeListLayout, arrangeCharacters, moveInCustomOrder,
     cardTemplate, parseCard, buildMemoryCleanupPrompt, validateMemoryCleanup, applyMemoryCleanup,
     MAX_SCENE_LENGTH, MAX_FEELING_LENGTH, latestFeeling, MAX_SUMMARY_LENGTH, chatSummary, summaryForPrompt, fittingMemories,
     FIRST_CHAT_ID, REWIND_LIMIT, currentChatId, turnChatId, turnsInChat, startNewChat, freshCopy,

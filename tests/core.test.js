@@ -516,3 +516,29 @@ test("風格提示詞：角色可以有自己的（例外），沒有就用共�
   assert.equal(Core.styleFor(none, "共用"), "");
   assert.equal(Core.normalize({ ...character, chat_settings: { style_prompt: "字".repeat(1200) } }).chat_settings.style_prompt.length, Core.MAX_STYLE_PROMPT_LENGTH);
 });
+
+test("角色列表：預設最近聊過在上面，沒聊過的排最後", () => {
+  const list = [
+    { id: "a", name: "阿", created_at: "2026-11-01T00:00:00Z", updated_at: "2026-11-20T00:00:00Z", last_chat_at: null },
+    { id: "b", name: "貝", created_at: "2026-11-02T00:00:00Z", updated_at: "2026-11-02T00:00:00Z", last_chat_at: "2026-11-22T00:00:00Z" },
+    { id: "c", name: "西", created_at: "2026-11-03T00:00:00Z", updated_at: "2026-11-03T00:00:00Z", last_chat_at: "2026-11-21T00:00:00Z" },
+  ];
+  const ids = (a) => [...a.pinned, ...a.folders.flatMap((f) => f.items), ...a.loose].map((x) => x.id);
+  assert.deepEqual(ids(Core.arrangeCharacters(list, null)), ["b", "c", "a"]);
+  assert.deepEqual(ids(Core.arrangeCharacters(list, { sort: "updated" })), ["a", "c", "b"]);
+  assert.deepEqual(ids(Core.arrangeCharacters(list, { sort: "created" })), ["c", "b", "a"]);
+  // 釘選在最上面、資料夾裡的不會重複出現在沒分類
+  const layout = { folders: [{ id: "f1", name: "學校" }], placement: { c: "f1", a: "f1" }, pinned: ["a"] };
+  const arranged = Core.arrangeCharacters(list, layout);
+  assert.deepEqual(arranged.pinned.map((x) => x.id), ["a"]);
+  assert.deepEqual(arranged.folders[0].items.map((x) => x.id), ["c"]);
+  assert.deepEqual(arranged.loose.map((x) => x.id), ["b"]);
+  // 不存在的資料夾當作沒分類；奇怪的排法回到預設
+  assert.deepEqual(Core.arrangeCharacters(list, { placement: { b: "沒有這個" }, sort: "亂寫" }).loose.map((x) => x.id), ["b", "c", "a"]);
+  // 自訂順序：上移下移只跟同一塊裡的鄰居換
+  let custom = { sort: "custom", order: ["a", "b", "c"] };
+  assert.deepEqual(ids(Core.arrangeCharacters(list, custom)), ["a", "b", "c"]);
+  custom = Core.moveInCustomOrder(list, custom, "c", -1);
+  assert.deepEqual(ids(Core.arrangeCharacters(list, custom)), ["a", "c", "b"]);
+  assert.deepEqual(ids(Core.arrangeCharacters(list, Core.moveInCustomOrder(list, custom, "a", -1))), ["a", "c", "b"]);
+});

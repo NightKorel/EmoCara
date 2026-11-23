@@ -14,15 +14,90 @@ const formatTime = (value) => value ? new Date(value).toLocaleString("zh-TW") : 
 
 // ---------- 角色清單 ----------
 function refreshList() { characters = Store.listCharacters(); renderList(); }
+// ---------- 左邊的角色列表：釘選、資料夾、排法（存在這台裝置） ----------
+function listLayout() { try { return Core.normalizeListLayout(Store.getSettings().list_layout); } catch { return Core.normalizeListLayout(null); } }
+function saveListLayout(layout) {
+  const ids = new Set(characters.map((item) => item.id)), clean = Core.normalizeListLayout(layout);
+  clean.pinned = clean.pinned.filter((id) => ids.has(id)); clean.order = clean.order.filter((id) => ids.has(id));
+  for (const id of Object.keys(clean.placement)) if (!ids.has(id)) delete clean.placement[id];
+  try { Store.saveSettings({ ...Store.getSettings(), list_layout: clean }); } catch (error) { toast(error.message, true); }
+  renderList();
+}
+function listSubtitle(item, sort) {
+  if (sort === "updated") return `最後修改 ${formatTime(item.updated_at)}`;
+  if (sort === "created") return `建立於 ${formatTime(item.created_at)}`;
+  return item.last_chat_at ? `最後聊天 ${formatTime(item.last_chat_at)}` : "還沒聊過";
+}
+function characterRow(item, sort, inFolder) {
+  const row = document.createElement("div"); row.className = `character-row${inFolder ? " in-folder" : ""}`;
+  const button = document.createElement("button");
+  button.className = `character-item ${current?.character_id === item.id ? "active" : ""}`;
+  button.innerHTML = `<strong>${escapeHtml(item.name)}</strong><small>${escapeHtml(listSubtitle(item, sort))}</small>`;
+  button.onclick = () => loadCharacter(item.id);
+  const more = document.createElement("button"); more.className = "character-more"; more.type = "button"; more.textContent = "⋯"; more.setAttribute("aria-label", `${item.name} 的選項`);
+  more.onclick = () => openCharacterMenu(item.id);
+  row.append(button, more); return row;
+}
+function sectionHead(text) { const head = document.createElement("p"); head.className = "list-section"; head.textContent = text; return head; }
 function renderList() {
   const container = $("#character-list"); container.innerHTML = "";
-  characters.forEach((item) => {
-    const button = document.createElement("button");
-    button.className = `character-item ${current?.character_id === item.id ? "active" : ""}`;
-    button.innerHTML = `<strong>${escapeHtml(item.name)}</strong><small>最後修改 ${escapeHtml(formatTime(item.updated_at))}</small>`;
-    button.onclick = () => loadCharacter(item.id);
-    container.append(button);
+  const arranged = Core.arrangeCharacters(characters, listLayout()), sort = arranged.sort;
+  $("#list-sort").value = sort;
+  if (arranged.pinned.length) { container.append(sectionHead("📌 釘選")); arranged.pinned.forEach((item) => container.append(characterRow(item, sort, false))); }
+  arranged.folders.forEach((folder) => {
+    const head = document.createElement("div"); head.className = "folder-head";
+    const toggle = document.createElement("button"); toggle.type = "button"; toggle.className = "folder-toggle";
+    toggle.textContent = `${folder.collapsed ? "▸" : "▾"} ${folder.name}（${folder.items.length}）`;
+    toggle.onclick = () => { const layout = listLayout(); layout.folders = layout.folders.map((f) => f.id === folder.id ? { ...f, collapsed: !f.collapsed } : f); saveListLayout(layout); };
+    const more = document.createElement("button"); more.type = "button"; more.className = "character-more"; more.textContent = "⋯"; more.setAttribute("aria-label", `資料夾 ${folder.name} 的選項`);
+    more.onclick = () => openFolderMenu(folder.id);
+    head.append(toggle, more); container.append(head);
+    if (!folder.collapsed) folder.items.forEach((item) => container.append(characterRow(item, sort, true)));
   });
+  arranged.loose.forEach((item) => container.append(characterRow(item, sort, false)));
+}
+// 列表最上面那個角色（開網頁時先打開它）。
+function firstInList() { const a = Core.arrangeCharacters(characters, listLayout()); return [...a.pinned, ...a.folders.flatMap((f) => f.items), ...a.loose][0] || null; }
+function createFolder() {
+  const name = (prompt("新資料夾的名字") || "").trim(); if (!name) return;
+  const layout = listLayout(); layout.folders.push({ id: `f${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`, name: name.slice(0, 40), collapsed: false });
+  saveListLayout(layout); toast(`建好資料夾「${name.slice(0, 40)}」，在角色的「⋯」裡可以放進去`);
+}
+let menuCharacterId = null, menuFolderId = null;
+function openCharacterMenu(id) { menuCharacterId = id; fillCharacterMenu(); $("#character-menu").showModal(); }
+function fillCharacterMenu() {
+  const item = characters.find((c) => c.id === menuCharacterId); if (!item) { $("#character-menu").close(); return; }
+  const layout = listLayout(), pinned = layout.pinned.includes(item.id), custom = layout.sort === "custom";
+  $("#cm-title").textContent = item.name;
+  $("#cm-pin").textContent = pinned ? "取消釘選" : "📌 釘選（放到最上面）";
+  const select = $("#cm-folder"); select.innerHTML = "";
+  [["", "不放資料夾"], ...layout.folders.map((f) => [f.id, f.name])].forEach(([value, label]) => { const option = document.createElement("option"); option.value = value; option.textContent = label; select.append(option); });
+  select.value = layout.placement[item.id] || "";
+  select.disabled = !layout.folders.length;
+  $("#cm-move").hidden = !custom; $("#cm-move-hint").hidden = custom;
+}
+function openFolderMenu(id) { menuFolderId = id; const folder = listLayout().folders.find((f) => f.id === id); if (!folder) return; $("#fm-name").value = folder.name; $("#folder-menu").showModal(); }
+function moveFolder(direction) {
+  const layout = listLayout(), index = layout.folders.findIndex((f) => f.id === menuFolderId), other = index + direction;
+  if (index < 0 || other < 0 || other >= layout.folders.length) return;
+  [layout.folders[index], layout.folders[other]] = [layout.folders[other], layout.folders[index]]; saveListLayout(layout);
+}
+function setupListControls() {
+  $("#new-folder").onclick = createFolder;
+  $("#list-sort").onchange = (event) => saveListLayout({ ...listLayout(), sort: event.target.value });
+  $("#cm-pin").onclick = () => { const layout = listLayout(), id = menuCharacterId; layout.pinned = layout.pinned.includes(id) ? layout.pinned.filter((x) => x !== id) : [...layout.pinned, id]; saveListLayout(layout); fillCharacterMenu(); };
+  $("#cm-folder").onchange = (event) => { const layout = listLayout(); if (event.target.value) layout.placement[menuCharacterId] = event.target.value; else delete layout.placement[menuCharacterId]; saveListLayout(layout); };
+  $("#cm-up").onclick = () => saveListLayout(Core.moveInCustomOrder(characters, listLayout(), menuCharacterId, -1));
+  $("#cm-down").onclick = () => saveListLayout(Core.moveInCustomOrder(characters, listLayout(), menuCharacterId, 1));
+  $("#fm-rename").onclick = () => { const name = $("#fm-name").value.trim(); if (!name) { toast("資料夾要有名字", true); return; } const layout = listLayout(); layout.folders = layout.folders.map((f) => f.id === menuFolderId ? { ...f, name } : f); saveListLayout(layout); toast("資料夾改好名字了"); };
+  $("#fm-up").onclick = () => moveFolder(-1); $("#fm-down").onclick = () => moveFolder(1);
+  $("#fm-delete").onclick = () => {
+    const layout = listLayout(), folder = layout.folders.find((f) => f.id === menuFolderId); if (!folder) return;
+    if (!confirm(`確定要刪除資料夾「${folder.name}」嗎？裡面的角色不會刪掉，會回到沒分類。`)) return;
+    layout.folders = layout.folders.filter((f) => f.id !== folder.id);
+    for (const [id, f] of Object.entries(layout.placement)) if (f === folder.id) delete layout.placement[id];
+    saveListLayout(layout); $("#folder-menu").close(); toast("資料夾刪掉了，角色都還在");
+  };
 }
 function loadCharacter(id) {
   if (characterDirty && current?.character_id !== id && !confirm("角色頁有還沒儲存的修改，確定要離開嗎？")) return;
@@ -785,7 +860,8 @@ function start() {
   $("#memory-cleanup").onclick = openMemoryCleanup; $("#mc-copy").onclick = () => copyText(Core.buildMemoryCleanupPrompt(current), "整理記憶的提示詞已複製", "瀏覽器不讓網頁直接複製。");
   $("#mc-gemini").onclick = cleanupWithGemini; $("#mc-read").onclick = () => showCleanup($("#mc-paste").value); $("#mc-apply").onclick = applyCleanup;
   $("#card-download").onclick = downloadCard; $("#card-import").onclick = importCardFromDialog;
-  try { refreshList(); if (characters[0]) { loadCharacter(characters[0].id); showTab("chat"); } }
+  setupListControls();
+  try { refreshList(); const first = firstInList(); if (first) { loadCharacter(first.id); showTab("chat"); } }
   catch (error) { toast(error.message, true); }
 }
 $("#new-character").onclick = createCharacter; document.querySelector("[data-new]").onclick = createCharacter;

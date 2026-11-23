@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, interactive-widget=resizes-content" />
     <title>情緒模擬器｜角色檔案</title>
-    <link rel="stylesheet" href="styles.css?v=0.1.36" />
+    <link rel="stylesheet" href="styles.css?v=0.1.37" />
     <script>
       // 先套上深淺色，免得打開時先閃一下白色。預設深色。
       try { const s = JSON.parse(localStorage.getItem("emocara:settings") || "{}"); document.documentElement.dataset.theme = s.theme === "light" ? "light" : "dark"; }
@@ -29,11 +29,13 @@
   <body>
     <div class="app-shell">
       <aside class="sidebar">
-        <div class="brand"><span class="spark">✦</span><div><strong>情緒模擬器</strong><small>角色檔案 v0.1.36</small></div></div>
+        <div class="brand"><span class="spark">✦</span><div><strong>情緒模擬器</strong><small>角色檔案 v0.1.37</small></div></div>
         <button id="new-character" class="primary wide">＋ 新增角色</button>
         <label class="import-button wide">⇧ 匯入角色<input id="import-file" type="file" accept="application/json,.json,text/plain,.txt" /></label>
         <button id="card-open" class="secondary wide settings-button" type="button">▤ 角卡</button>
-        <nav><p class="nav-label">我的角色</p><div id="character-list" class="character-list"></div></nav>
+        <nav><div class="nav-head"><p class="nav-label">我的角色</p><button id="new-folder" class="nav-small" type="button">＋ 資料夾</button></div>
+          <select id="list-sort" class="list-sort" aria-label="角色排法"><option value="recent_chat">排法：最近聊過</option><option value="updated">排法：最近修改</option><option value="created">排法：建立時間</option><option value="name">排法：名字</option><option value="custom">排法：自訂順序</option></select>
+          <div id="character-list" class="character-list"></div></nav>
         <button id="theme-toggle" class="secondary wide settings-button" type="button">☀ 換成淺色</button>
         <button id="hue-open" class="secondary wide settings-button" type="button"><span class="hue-dot"></span>主題色</button>
         <button id="open-settings" class="secondary wide settings-button">⚙ 設定</button>
@@ -197,6 +199,22 @@
       <button value="fresh" class="secondary choice">不沿用記憶<small id="new-chat-fresh-text"></small></button>
       <button value="cancel" class="text-button">取消</button>
     </form></dialog>
+    <dialog id="character-menu" class="choice-dialog"><form method="dialog">
+      <h2 id="cm-title">角色</h2>
+      <button id="cm-pin" type="button" class="secondary choice">📌 釘選</button>
+      <label class="field">放在資料夾<select id="cm-folder"></select></label>
+      <div id="cm-move" class="menu-row"><button id="cm-up" type="button" class="secondary">↑ 上移</button><button id="cm-down" type="button" class="secondary">↓ 下移</button></div>
+      <p id="cm-move-hint" class="muted">排法選「自訂順序」才能上移、下移。</p>
+      <button value="cancel" class="text-button">關閉</button>
+    </form></dialog>
+    <dialog id="folder-menu" class="choice-dialog"><form method="dialog">
+      <h2>資料夾</h2>
+      <label class="field">名字<input id="fm-name" maxlength="40" /></label>
+      <button id="fm-rename" type="button" class="primary">改名</button>
+      <div class="menu-row"><button id="fm-up" type="button" class="secondary">↑ 上移</button><button id="fm-down" type="button" class="secondary">↓ 下移</button></div>
+      <button id="fm-delete" type="button" class="danger-link">刪除資料夾（角色不會刪）</button>
+      <button value="cancel" class="text-button">關閉</button>
+    </form></dialog>
     <dialog id="settings-dialog"><form method="dialog" id="settings-form"><div class="dialog-heading"><h2>設定</h2><button value="cancel" class="icon-button" aria-label="關閉">×</button></div>
       <p class="muted">這些設定只存在這台裝置的瀏覽器裡，不會上傳到 GitHub。換一台裝置要再填一次。</p>
       <label class="field">Gemini 鑰匙<input name="gemini_api_key" type="password" autocomplete="off" placeholder="從 Google AI Studio 複製過來" /></label>
@@ -211,9 +229,9 @@
         <p class="muted">打勾的角色用自己的風格，沒打勾的用上面共用的。</p>
         <div id="style-exception-list"></div></details>
       <div class="dialog-actions"><button value="cancel" class="secondary">取消</button><button value="default" class="primary">儲存</button></div></form></dialog>
-    <script src="core.js?v=0.1.36"></script>
-    <script src="store.js?v=0.1.36"></script>
-    <script src="ai.js?v=0.1.36"></script>
-    <script src="app.js?v=0.1.36"></script>
+    <script src="core.js?v=0.1.37"></script>
+    <script src="store.js?v=0.1.37"></script>
+    <script src="ai.js?v=0.1.37"></script>
+    <script src="app.js?v=0.1.37"></script>
   </body>
 </html>

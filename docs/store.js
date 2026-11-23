@@ -33,7 +33,7 @@
       return keys(CHARACTER)
         .map((key) => read(key, null))
         .filter(Boolean)
-        .map((doc) => ({ id: doc.character_id, name: doc.profile?.name || "未命名角色", created_at: doc.metadata?.created_at, updated_at: doc.metadata?.updated_at }))
+        .map((doc) => { const turns = read(TURNS + doc.character_id, []), last = Array.isArray(turns) && turns.length ? turns[turns.length - 1] : null; return { id: doc.character_id, name: doc.profile?.name || "未命名角色", created_at: doc.metadata?.created_at, updated_at: doc.metadata?.updated_at, last_chat_at: last?.created_at || null }; })
         .sort((a, b) => String(b.updated_at).localeCompare(String(a.updated_at)));
     },
     getCharacter(id) { return read(CHARACTER + id, null); },
