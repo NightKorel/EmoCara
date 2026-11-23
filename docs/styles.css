@@ -175,3 +175,4 @@ dialog { background:var(--paper); color:var(--ink); }
 /* 粗字不要太粗（2026-11-22 納可：粗體好粗好刺眼）。標題靠字的大小分，不靠粗。 */
 h1, h2, h3, h4, strong, b, summary, legend { font-weight:500; }
 .page-header h1 { font-weight:600; }
+.style-exceptions summary { cursor:pointer; color:var(--c46575b); font-size:.84rem; font-weight:500; } .style-exceptions[open] { display:grid; gap:11px; } .style-exception { display:grid; gap:7px; margin-top:9px; } .style-exception textarea { width:100%; border:1px solid var(--cccd9d6); border-radius:8px; padding:10px 11px; background:var(--cfff); color:var(--ink); resize:vertical; line-height:1.52; }

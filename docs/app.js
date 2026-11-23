@@ -280,7 +280,35 @@ function applyCleanup() {
 }
 
 // ---------- 設定（Gemini 鑰匙只存在這台裝置） ----------
-function openSettings() { const s = Store.getSettings(), form = $("#settings-form"); form.gemini_api_key.value = s.gemini_api_key || ""; form.gemini_model.value = s.gemini_model || ""; form.phone_zoom.value = s.phone_zoom === "page" ? "page" : "fullscreen"; form.auto_copy.checked = s.auto_copy !== false; form.style_prompt.value = stylePrompt(); $("#settings-dialog").showModal(); }
+function openSettings() { const s = Store.getSettings(), form = $("#settings-form"); form.gemini_api_key.value = s.gemini_api_key || ""; form.gemini_model.value = s.gemini_model || ""; form.phone_zoom.value = s.phone_zoom === "page" ? "page" : "fullscreen"; form.auto_copy.checked = s.auto_copy !== false; form.style_prompt.value = stylePrompt(); renderStyleExceptions(); $("#settings-dialog").showModal(); }
+// 詳細設定：每個角色一列，打勾就用自己的風格（第一次打勾先抄一份共用的來改）。
+function renderStyleExceptions() {
+  const list = $("#style-exception-list"); list.replaceChildren();
+  const docs = Store.listCharacters().map((item) => Store.getCharacter(item.id)).filter(Boolean);
+  $(".style-exceptions").open = docs.some((doc) => typeof doc.chat_settings?.style_prompt === "string"); // 有例外角色就直接打開
+  if (!docs.length) { const p = document.createElement("p"); p.className = "muted"; p.textContent = "還沒有角色。"; list.append(p); return; }
+  for (const doc of docs) {
+    const own = doc.chat_settings?.style_prompt, row = document.createElement("div"); row.className = "style-exception"; row.dataset.id = doc.character_id;
+    const label = document.createElement("label"); label.className = "time-switch";
+    const box = document.createElement("input"); box.type = "checkbox"; box.checked = typeof own === "string";
+    label.append(box, ` ${doc.profile?.name || "未命名角色"}`);
+    const text = document.createElement("textarea"); text.rows = 4; text.maxLength = Core.MAX_STYLE_PROMPT_LENGTH; text.hidden = !box.checked; text.value = typeof own === "string" ? own : "";
+    box.onchange = () => { text.hidden = !box.checked; if (box.checked && !text.value.trim()) text.value = $("#settings-form").style_prompt.value; };
+    row.append(label, text); list.append(row);
+  }
+}
+// 儲存時：有改到的角色才存回去。
+function saveStyleExceptions() {
+  for (const row of $("#style-exception-list").querySelectorAll(".style-exception")) {
+    const doc = Store.getCharacter(row.dataset.id); if (!doc) continue;
+    const checked = row.querySelector("input").checked, value = checked ? row.querySelector("textarea").value.trim() : null;
+    const before = typeof doc.chat_settings?.style_prompt === "string" ? doc.chat_settings.style_prompt : null;
+    if (value === before) continue;
+    const { style_prompt, ...rest } = doc.chat_settings || {};
+    const saved = Store.saveCharacter(Core.normalize({ ...doc, chat_settings: value === null ? rest : { ...rest, style_prompt: value } }));
+    if (current?.character_id === saved.character_id) current = saved;
+  }
+}
 // 風格提示詞：沒存過就用預設；存過（就算是空的）就照玩家寫的。
 function stylePrompt() { try { const saved = Store.getSettings().style_prompt; return typeof saved === "string" ? saved : Core.DEFAULT_STYLE_PROMPT; } catch { return Core.DEFAULT_STYLE_PROMPT; } }
 function saveSettings(event) {
@@ -288,7 +316,7 @@ function saveSettings(event) {
   const form = $("#settings-form");
   const style = form.style_prompt.value.trim();
   if (style.length > Core.MAX_STYLE_PROMPT_LENGTH) { event.preventDefault(); toast(`風格提示詞最多 ${Core.MAX_STYLE_PROMPT_LENGTH} 字，現在是 ${style.length} 字。`, true); return; }
-  try { Store.saveSettings({ ...Store.getSettings(), gemini_api_key: form.gemini_api_key.value.trim(), gemini_model: form.gemini_model.value.trim(), phone_zoom: form.phone_zoom.value, auto_copy: form.auto_copy.checked, style_prompt: style }); renderChat(); toast("設定已存在這台裝置"); }
+  try { Store.saveSettings({ ...Store.getSettings(), gemini_api_key: form.gemini_api_key.value.trim(), gemini_model: form.gemini_model.value.trim(), phone_zoom: form.phone_zoom.value, auto_copy: form.auto_copy.checked, style_prompt: style }); saveStyleExceptions(); if (current) render(); else renderChat(); toast("設定已存在這台裝置"); }
   catch (error) { toast(error.message, true); }
 }
 
@@ -414,7 +442,7 @@ function renderChat() {
 }
 function chatPrompt(userMessage, manual = false) {
   const all = Store.allTurns(current.character_id);
-  return Core.buildChatPrompt(current, Core.turnsInChat(all, Core.currentChatId(current)).slice(-12), userMessage, { summary: Core.summaryForPrompt(current, all), manual, feeling: Core.latestFeeling(all), style: stylePrompt() });
+  return Core.buildChatPrompt(current, Core.turnsInChat(all, Core.currentChatId(current)).slice(-12), userMessage, { summary: Core.summaryForPrompt(current, all), manual, feeling: Core.latestFeeling(all), style: Core.styleFor(current, stylePrompt()) });
 }
 // Gemini 失敗時：剛剛那句直接換成手動流程，不用重打。
 // 手動模式：送出時自動複製提示詞（設定可以關掉，預設開）。瀏覽器不讓複製的話就安靜放著，照舊按「複製提示詞」。

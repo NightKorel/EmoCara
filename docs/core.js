@@ -198,6 +198,8 @@
     const chatSettings = objectOr(result.chat_settings, {});
     // proposals＝設定提議開關；video＝視訊模式開關。沒寫過的角色都預設開著。
     result.chat_settings = { real_time: chatSettings.real_time === true, time_since: typeof chatSettings.time_since === "string" ? chatSettings.time_since : null, proposals: chatSettings.proposals !== false, video: chatSettings.video !== false };
+    // style_prompt＝這個角色自己的風格提示詞（例外）；沒有就用「設定」裡共用的。空字串＝這個角色不送風格。
+    if (typeof chatSettings.style_prompt === "string") result.chat_settings.style_prompt = chatSettings.style_prompt.trim().slice(0, MAX_STYLE_PROMPT_LENGTH);
     // 還沒處理的設定提議（AI 提的，使用者同意才會改進設定）。
     result.pending_proposals = Array.isArray(result.pending_proposals)
       ? result.pending_proposals.filter((item) => isObject(item) && typeof item.proposal_id === "string" && typeof item.target === "string" && typeof item.new_text === "string")
@@ -708,6 +710,9 @@ ${JSON.stringify(data)}`;
     });
   }
 
+  // 這個角色要用的風格：有自己的就用自己的，不然用共用的。
+  function styleFor(character, shared) { const own = character?.chat_settings?.style_prompt; return typeof own === "string" ? own : (typeof shared === "string" ? shared : ""); }
+
   const SPOILER_LINE = "以下是給程式看的資料，含劇透，請直接按複製";
   function buildChatPrompt(character, recentTurns, userMessage, { now = timestamp(), summary = null, manual = false, feeling = null, style = "" } = {}) {
     const realTime = character.chat_settings?.real_time === true;
@@ -807,7 +812,7 @@ ${supplied}`;
   }
 
   const api = {
-    SCHEMA_VERSION, CHAT_CONTRACT_VERSION, DEFAULT_STYLE_PROMPT, MAX_STYLE_PROMPT_LENGTH, PRESET_MODULES, MODULE_GUIDES, MEMORY_IMPORTANCE,
+    SCHEMA_VERSION, CHAT_CONTRACT_VERSION, DEFAULT_STYLE_PROMPT, MAX_STYLE_PROMPT_LENGTH, styleFor, PRESET_MODULES, MODULE_GUIDES, MEMORY_IMPORTANCE,
     DEFAULT_MEMORY_SETTINGS, RELATIONSHIP_DIMENSIONS,
     clone, timestamp, newCharacter, newModule, newMemory, newRelationship,
     normalize, normalizeMemorySettings, validateStateProposal, applyStateProposal,

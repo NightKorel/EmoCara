@@ -504,3 +504,15 @@ test("風格提示詞：有寫才送給 AI，預設那份可以直接用", () =>
   assert.match(buildChatPrompt(character, [], "嗨", { style: Core.DEFAULT_STYLE_PROMPT }), /不用比喻/);
   assert.ok(Core.DEFAULT_STYLE_PROMPT.length <= Core.MAX_STYLE_PROMPT_LENGTH);
 });
+
+test("風格提示詞：角色可以有自己的（例外），沒有就用共用的", () => {
+  const character = newCharacter("維伊");
+  assert.equal(Core.styleFor(character, "共用"), "共用");
+  assert.equal(Core.normalize(character).chat_settings.style_prompt, undefined);
+  const own = Core.normalize({ ...character, chat_settings: { ...character.chat_settings, style_prompt: "  冷淡、話少  " } });
+  assert.equal(own.chat_settings.style_prompt, "冷淡、話少");
+  assert.equal(Core.styleFor(own, "共用"), "冷淡、話少");
+  const none = Core.normalize({ ...character, chat_settings: { ...character.chat_settings, style_prompt: "" } });
+  assert.equal(Core.styleFor(none, "共用"), "");
+  assert.equal(Core.normalize({ ...character, chat_settings: { style_prompt: "字".repeat(1200) } }).chat_settings.style_prompt.length, Core.MAX_STYLE_PROMPT_LENGTH);
+});
