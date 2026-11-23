@@ -1,0 +1,247 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, interactive-widget=resizes-content" />
+    <title>情緒模擬器｜角色檔案</title>
+    <link rel="stylesheet" href="styles.css?v=0.1.38" />
+    <script>
+      // 先套上深淺色，免得打開時先閃一下白色。預設深色。
+      try { const s = JSON.parse(localStorage.getItem("emocara:settings") || "{}"); document.documentElement.dataset.theme = s.theme === "light" ? "light" : "dark"; }
+      catch { document.documentElement.dataset.theme = "dark"; }
+      // 主題色（色相環）也先套上，免得先閃一下原本的青綠色。app.js 換色時也用這個函式。
+      // 每個主色：[色相差, 飽和度, 亮度]。色相一律跟主色一樣（差 0）。
+      // 2026-11-22 納可：泡泡和比較飽和的背景調淡一點、色相不要跟主色差太多 → 主色和左邊欄的飽和度降一點。納可：「調太少了，再一點點」→ 再降一次（v0.1.29，泡泡 33% → 27%）。
+      window.EmoHueTones = {
+        light: { "--accent": [0, 27, 37], "--accent-dark": [0, 34, 27], "--soft": [0, 18, 92], "--c213b3d": [0, 17, 18] },
+        dark: { "--accent": [0, 27, 41], "--accent-dark": [0, 34, 69], "--soft": [0, 20, 17], "--c213b3d": [0, 13, 11], "--accent-hover": [0, 25, 47] },
+      };
+      window.EmoApplyHue = function (hue, theme) {
+        const tones = window.EmoHueTones, root = document.documentElement.style;
+        theme = theme || document.documentElement.dataset.theme;
+        Object.keys(Object.assign({}, tones.light, tones.dark)).forEach(function (name) { root.removeProperty(name); });
+        if (!Number.isFinite(hue)) return;
+        Object.entries(tones[theme] || tones.dark).forEach(function ([name, [shift, s, l]]) { root.setProperty(name, "hsl(" + ((((hue + shift) % 360) + 360) % 360) + " " + s + "% " + l + "%)"); });
+      };
+      try { window.EmoApplyHue(JSON.parse(localStorage.getItem("emocara:settings") || "{}").hue); } catch { /* 讀不到就用預設色 */ }
+    </script>
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="sidebar">
+        <div class="side-top"><div class="brand"><span class="spark">✦</span><div><strong>情緒模擬器</strong><small>v0.1.38</small></div></div><button id="add-menu-open" class="side-plus" type="button" aria-label="新增或匯入角色" title="新增角色、匯入角色、角卡">＋</button></div>
+        <nav class="side-nav"><div class="nav-head"><p class="nav-label">我的角色</p><button id="new-folder" class="nav-small" type="button">＋ 資料夾</button></div>
+          <select id="list-sort" class="list-sort" aria-label="角色排法"><option value="recent_chat">排法：最近聊過</option><option value="updated">排法：最近修改</option><option value="created">排法：建立時間</option><option value="name">排法：名字</option><option value="custom">排法：自訂順序</option></select>
+          <div id="character-list" class="character-list"></div></nav>
+        <button id="open-settings" class="side-settings" type="button">⚙ 設定</button>
+      </aside>
+      <main class="content">
+        <section id="empty-state" class="empty-state">
+          <div class="empty-icon">◌</div><h1>先建立一名角色</h1><p>建好角色就能開始聊天。也可以按左上角的「＋」匯入角色或貼上角卡。</p>
+          <button class="primary" data-new>新增第一名角色</button>
+        </section>
+        <section id="editor" class="editor" hidden>
+          <header class="chat-header">
+            <button id="back-to-list" class="header-back" type="button" aria-label="回到角色列表">←</button>
+            <h1 id="character-title" class="chat-name">未命名角色</h1>
+            <div class="header-buttons">
+              <button class="tab" data-tab="character" type="button">角色</button>
+              <button class="tab" data-tab="observer" type="button">觀察者</button>
+              <button id="chat-menu-open" class="header-more" type="button" aria-label="聊天的其他功能">⋯</button>
+            </div>
+          </header>
+          <div class="editor-body">
+          <section id="panel-chat" class="chat-panel">
+            <div id="old-chat-banner" class="old-chat-banner" hidden>這是舊的聊天，只能看，不能接著聊。<button id="back-to-current-chat" class="text-button" type="button">回到目前的聊天</button></div>
+            <div id="chat-history" class="chat-history" aria-live="polite"></div>
+            <section id="manual-chat-workflow" class="manual-workflow" hidden>
+              <p id="manual-step-1" class="manual-step">1. 按「複製提示詞」，貼給網頁上的 AI。</p>
+              <div class="chat-actions left"><button id="copy-chat-prompt" class="secondary" type="button">複製提示詞</button><button id="show-chat-prompt" class="text-button" type="button">看提示詞內容</button></div>
+              <textarea id="manual-chat-prompt" rows="8" class="code-input" readonly hidden></textarea>
+              <p class="manual-step">2. 複製 AI 回的整段，回來按「從剪貼簿貼上」。</p>
+              <div class="chat-actions left"><button id="paste-chat-response" class="primary" type="button">從剪貼簿貼上</button><button id="cancel-manual-chat" class="secondary" type="button">取消這句</button></div>
+              <p id="paste-help" class="paste-help" hidden></p>
+              <details class="manual-fallback"><summary>貼不進來？改成自己貼</summary>
+                <textarea id="manual-chat-response" rows="4" class="code-input" placeholder="整段貼上就好，被 ```json 包住也可以。"></textarea>
+                <div class="chat-actions"><button id="parse-chat-response" class="secondary" type="button">用框裡的內容</button></div>
+              </details>
+            </section>
+            <form id="chat-form" class="chat-composer">
+              <textarea id="chat-message" rows="1" maxlength="4000" placeholder="想跟他說什麼？" aria-label="想對角色說的話"></textarea>
+              <button id="chat-generate" class="primary chat-send">送出</button>
+            </form>
+            <div class="chat-mode-row"><label>回覆方式<select id="chat-mode"><option value="manual">手動複製貼上</option><option value="automatic">Gemini 自動回覆</option></select></label><span id="model-status" class="model-status">檢查模型設定中…</span><span class="chat-hint">Enter 送出，Shift＋Enter 換行</span></div>
+          </section>
+          <aside id="side-panel" class="side-panel" hidden>
+            <div class="side-panel-head"><h2 id="side-panel-title">角色</h2><button id="side-panel-close" class="side-close" type="button" aria-label="關閉，回到聊天"><span class="close-phone">← 回到聊天</span><span class="close-desk">×</span></button></div>
+          <section id="panel-character" class="panel tab-panel" hidden>
+            <div class="section-heading"><div><p>用你自己的話寫就好。空著的格子會直接跳過，不用填滿。</p><p id="save-status" class="muted">已存在這台裝置</p></div><button id="save-character" class="primary">儲存角色</button></div>
+            <details id="proposal-box" class="advanced proposal-box" hidden>
+              <summary id="proposal-summary">AI 提議的設定變化</summary>
+              <p class="muted proposal-intro">聊天裡發生的事改變了他，AI 提議這樣改。放著不處理也沒關係，同意了才會改進設定。</p>
+              <div id="proposal-list" class="proposal-list"></div>
+            </details>
+            <form id="character-form">
+              <div class="form-grid">
+                <label class="field span-2">名字<input name="name" required placeholder="角色姓名" /></label>
+                <label class="field">年齡<input name="age" type="text" placeholder="可留空" /></label>
+                <label class="field">職業／身分<input name="occupation" placeholder="可留空" /></label>
+                <label class="field span-2">外表<textarea name="appearance" rows="3" placeholder="長相、穿著、給人的第一印象……"></textarea></label>
+              </div>
+              <div class="subsection-heading"><h3>心理模組</h3><p>每一格附一個問題幫你想。關掉的模組，AI 就讀不到。</p></div>
+              <div id="module-cards" class="module-cards"></div>
+              <div class="chat-actions"><button type="button" id="add-custom-module" class="secondary">＋ 新增自訂模組</button></div>
+              <details class="advanced">
+                <summary>更多基本資料（別名、性別、背景……）</summary>
+                <div class="form-grid">
+                  <label class="field">別名（以逗號分隔）<input name="aliases" placeholder="例：小北, 北北" /></label>
+                  <label class="field">性別<input name="gender" placeholder="可留空" /></label>
+                  <label class="field">代名詞<input name="pronouns" placeholder="可留空" /></label>
+                  <label class="field span-2">背景與人生經歷<textarea name="background" rows="5" placeholder="成長環境、家庭、重要經歷……"></textarea></label>
+                  <label class="field span-2">目前生活狀態<textarea name="current_situation" rows="3" placeholder="目前身處什麼情況？"></textarea></label>
+                  <label class="field span-2">其他設定（JSON 物件）<textarea name="other_information" rows="4" class="code-input" placeholder='例如：{ "world": "北境大學" }'></textarea></label>
+                </div>
+              </details>
+              <div class="chat-actions"><span id="character-dirty" class="dirty-note"></span><button class="primary">儲存角色</button></div>
+            </form>
+
+            <details class="advanced advanced-main">
+              <summary>進階（數字和系統設定，平常不用動）</summary>
+              <section class="advanced-section">
+                <div class="section-heading"><div><h3>心理數值</h3><p>數值只用於角色演繹，不是臨床心理測量。</p></div><button id="save-state" class="primary">儲存心理數值</button></div>
+                <form id="state-form" class="state-form">
+              <section><h3>情緒座標</h3><div class="form-grid"><label class="field">情緒效價（-100～100）<input name="valence" type="number" min="-100" max="100" /></label><label class="field">喚起程度（0～100）<input name="arousal" type="number" min="0" max="100" /></label></div></section>
+              <section><h3>預設心理指標</h3><div class="form-grid metrics"><label class="field">安全感<input name="security" type="number" min="0" max="100" /></label><label class="field">焦慮<input name="anxiety" type="number" min="0" max="100" /></label><label class="field">孤獨感<input name="loneliness" type="number" min="0" max="100" /></label><label class="field">情緒穩定度<input name="emotional_stability" type="number" min="0" max="100" /></label></div></section>
+              <section class="form-grid"><label class="field">目前情緒（JSON 物件）<textarea name="emotions" rows="5" class="code-input" placeholder='例如：{ "joy": 20, "grief": 40 }'></textarea></label><label class="field">自訂指標（JSON 物件）<textarea name="custom_metrics" rows="5" class="code-input" placeholder='例如：{ "curiosity": 60 }'></textarea></label></section>
+            </form>
+              </section>
+              <section class="advanced-section">
+                <div class="section-heading"><div><h3>關係數值</h3><p>由你手動設定；目前 AI 不會自行更動。</p></div><button id="add-relationship" class="primary">＋ 新增關係</button></div>
+                <div class="module-layout"><aside id="relationship-list" class="module-list"></aside><article id="relationship-editor" class="module-editor empty-module">選取左側關係，開始編輯它的維度。</article></div>
+              </section>
+              <section class="advanced-section">
+                <div><h3>記憶容量</h3><p class="muted">超出上限時只會阻止新增，不會自動刪除或合併舊記憶。</p></div>
+                <form id="memory-settings-form" class="memory-settings-grid">
+                <div class="memory-limit"><strong>核心記憶</strong><label class="field">最多筆數<input name="core_max_items" type="number" min="1" max="500" /></label><label class="field">每筆文字上限<input name="core_max_chars" type="number" min="40" max="5000" /></label></div>
+                <div class="memory-limit"><strong>重要記憶</strong><label class="field">最多筆數<input name="important_max_items" type="number" min="1" max="500" /></label><label class="field">每筆文字上限<input name="important_max_chars" type="number" min="40" max="5000" /></label></div>
+                <div class="memory-limit"><strong>普通記憶</strong><label class="field">最多筆數<input name="ordinary_max_items" type="number" min="1" max="500" /></label><label class="field">每筆文字上限<input name="ordinary_max_chars" type="number" min="40" max="5000" /></label></div>
+                <div class="memory-settings-actions"><button class="primary">儲存記憶容量</button></div>
+              </form>
+              </section>
+              <section class="advanced-section">
+                <div class="section-heading"><div><h3>完整資料</h3><p>給檢查和除錯用。</p></div><button id="copy-json" class="secondary">複製 JSON</button></div>
+                <pre id="json-preview" class="json-preview"></pre>
+              </section>
+            </details>
+            <div class="danger-zone"><button id="delete-character" class="danger-link" type="button">刪除角色</button><span class="muted">角色和所有對話都會刪掉。想留著的話，先用聊天右上角「⋯」裡的「匯出備份」。</span></div>
+          </section>
+          <section id="panel-observer" class="panel tab-panel" hidden>
+            <div class="section-heading"><div><p>只在你主動打開時顯示，不會在聊天裡自動露出他的內在。</p></div><span class="observer-badge">只讀</span></div>
+            <section class="observer-section"><div class="observer-title"><h3>他對你的感覺</h3><span id="observer-now-time" class="observer-note"></span></div><div id="observer-now" class="observer-now"></div></section>
+            <section class="observer-section"><div class="observer-title"><h3>他記得的近期經過</h3><span class="observer-note">AI 每句順便更新，最多 500 字</span></div><p id="observer-summary" class="observer-summary"></p></section>
+            <section class="observer-section"><div class="observer-title"><h3>已確認記憶</h3><span id="observer-memory-count" class="badge">0</span><button id="memory-cleanup" class="primary" type="button">✦ 請 AI 整理記憶</button></div><div id="observer-memories" class="observer-memories"></div></section>
+            <details class="advanced observer-numbers"><summary>數字（心理數值、關係），平常不用看</summary>
+              <section class="observer-section"><h3>目前心理狀態</h3><div id="observer-state" class="observer-metrics"></div></section>
+              <section class="observer-section"><h3>關係資料</h3><p id="observer-relationships" class="observer-empty"></p><div id="observer-relationship-list" class="observer-relationships"></div></section>
+            </details>
+          </section>
+          </aside>
+          </div>
+        </section>
+      </main>
+    </div>
+    <div id="toast" class="toast" role="status"></div>
+    <dialog id="card-dialog" class="choice-dialog card-dialog"><form method="dialog">
+      <h2>角卡</h2>
+      <p>空白的角卡格式已經複製好了，拿去別的地方慢慢填。填好再貼回下面，或按左上角「＋」裡的「匯入角色」選檔案。匯入一律變成一個新角色。</p>
+      <textarea id="card-template" class="code-input" rows="7" readonly aria-label="空白角卡格式"></textarea>
+      <div class="dialog-actions"><button id="card-copy" type="button" class="secondary">再複製一次</button><button id="card-download" type="button" class="secondary">下載成檔案</button></div>
+      <textarea id="card-paste" rows="5" placeholder="把填好的角卡整份貼在這裡" aria-label="貼上填好的角卡"></textarea>
+      <div class="dialog-actions"><button value="cancel" class="text-button">關閉</button><button id="card-import" type="button" class="primary">匯入成新角色</button></div>
+    </form></dialog>
+    <dialog id="memory-dialog" class="choice-dialog card-dialog"><form method="dialog">
+      <h2>整理記憶</h2>
+      <p>請 AI 把意思一樣或很像的記憶合併。整理完會先給你看，按「換成整理後的記憶」才會真的換。</p>
+      <div class="dialog-actions"><button id="mc-copy" type="button" class="secondary">複製提示詞</button><button id="mc-gemini" type="button" class="primary">用 Gemini 整理</button></div>
+      <textarea id="mc-paste" rows="4" placeholder="手動：把提示詞貼給網頁上的 AI，再把它回的整段貼在這裡" aria-label="貼上 AI 整理的結果"></textarea>
+      <div class="dialog-actions"><button id="mc-read" type="button" class="secondary">讀取貼上的內容</button></div>
+      <div id="mc-preview" class="mc-preview"></div>
+      <div class="dialog-actions"><button value="cancel" class="text-button">關閉</button><button id="mc-apply" type="button" class="primary" hidden>換成整理後的記憶</button></div>
+    </form></dialog>
+    <dialog id="hue-dialog" class="choice-dialog"><form method="dialog">
+      <h2>主題色</h2>
+      <p>在色環上點一下或拖著轉，換整個網頁的主色。深淺和鮮豔度固定。</p>
+      <div id="hue-ring" class="hue-ring" role="slider" aria-label="色相" aria-valuemin="0" aria-valuemax="359" tabindex="0"><span id="hue-knob" class="hue-knob"></span><span id="hue-center" class="hue-center"></span></div>
+      <div class="dialog-actions"><button id="hue-reset" type="button" class="secondary">恢復預設</button><button value="done" class="primary">好了</button></div>
+    </form></dialog>
+    <dialog id="time-dialog" class="choice-dialog"><form method="dialog">
+      <h2>打開現實時間</h2>
+      <p id="time-dialog-text"></p>
+      <button value="now" class="primary choice">算「剛剛」<small>他覺得你們剛剛還在聊，從現在開始才感覺到時間流動。</small></button>
+      <button value="real" class="secondary choice">照真實時間<small id="time-dialog-real"></small></button>
+      <button value="cancel" class="text-button">取消，不打開</button>
+    </form></dialog>
+    <dialog id="new-chat-dialog" class="choice-dialog"><form method="dialog">
+      <h2>開新聊天</h2>
+      <p>要讓他記得以前的事嗎？</p>
+      <button value="keep" class="primary choice">沿用記憶<small id="new-chat-keep-text"></small></button>
+      <button value="fresh" class="secondary choice">不沿用記憶<small id="new-chat-fresh-text"></small></button>
+      <button value="cancel" class="text-button">取消</button>
+    </form></dialog>
+    <dialog id="add-menu" class="choice-dialog"><form method="dialog">
+      <h2>新增角色</h2>
+      <button id="new-character" type="button" class="primary choice">＋ 新增角色<small>取個名字，接著填他的設定。</small></button>
+      <label class="secondary choice import-choice">⇧ 匯入角色<small>選匯出的備份檔（.json）或角卡（.txt），一律變成新角色。</small><input id="import-file" type="file" accept="application/json,.json,text/plain,.txt" /></label>
+      <button id="card-open" type="button" class="secondary choice">▤ 角卡<small>拿空白角卡去別的地方填，或貼上填好的角卡。</small></button>
+      <button value="cancel" class="text-button">關閉</button>
+    </form></dialog>
+    <dialog id="chat-menu" class="choice-dialog"><form method="dialog">
+      <h2>聊天</h2>
+      <button id="new-chat" type="button" class="secondary choice">開新聊天<small>可以選要不要讓他記得以前的事。</small></button>
+      <label id="chat-select-box" class="field" hidden>看以前的聊天<select id="chat-select" aria-label="切換聊天視窗"></select></label>
+      <div class="menu-switches">
+        <label class="time-switch"><input type="checkbox" id="real-time-toggle"> 現實時間<small>開著：他知道現在幾點、隔了多久。</small></label>
+        <label class="time-switch"><input type="checkbox" id="proposal-toggle"> 設定提議<small>開著：聊天改變了他，AI 會提議改設定，你同意才改。</small></label>
+        <label class="time-switch"><input type="checkbox" id="video-toggle"> 視訊模式<small>開著：他回話時多一段鏡頭看得到的描述。</small></label>
+      </div>
+      <div id="chat-width-box" class="menu-width">聊天寬度<button id="chat-narrower" class="width-button" type="button" aria-label="窄一點">－</button><button id="chat-wider" class="width-button" type="button" aria-label="寬一點">＋</button></div>
+      <button id="chat-fullscreen" type="button" class="secondary choice" hidden>全螢幕<small>連網址列都藏起來。用返回手勢就會退出。</small></button>
+      <button id="export-button" type="button" class="secondary choice">匯出備份<small>角色和對話存成一個檔案，可以帶到別台裝置匯入。</small></button>
+      <button value="cancel" class="text-button">關閉</button>
+    </form></dialog>
+    <dialog id="character-menu" class="choice-dialog"><form method="dialog">
+      <h2 id="cm-title">角色</h2>
+      <button id="cm-pin" type="button" class="secondary choice">📌 釘選</button>
+      <label class="field">放在資料夾<select id="cm-folder"></select></label>
+      <div id="cm-move" class="menu-row"><button id="cm-up" type="button" class="secondary">↑ 上移</button><button id="cm-down" type="button" class="secondary">↓ 下移</button></div>
+      <p id="cm-move-hint" class="muted">排法選「自訂順序」才能上移、下移。</p>
+      <button value="cancel" class="text-button">關閉</button>
+    </form></dialog>
+    <dialog id="folder-menu" class="choice-dialog"><form method="dialog">
+      <h2>資料夾</h2>
+      <label class="field">名字<input id="fm-name" maxlength="40" /></label>
+      <button id="fm-rename" type="button" class="primary">改名</button>
+      <div class="menu-row"><button id="fm-up" type="button" class="secondary">↑ 上移</button><button id="fm-down" type="button" class="secondary">↓ 下移</button></div>
+      <button id="fm-delete" type="button" class="danger-link">刪除資料夾（角色不會刪）</button>
+      <button value="cancel" class="text-button">關閉</button>
+    </form></dialog>
+    <dialog id="settings-dialog"><form method="dialog" id="settings-form"><div class="dialog-heading"><h2>設定</h2><button value="cancel" class="icon-button" aria-label="關閉">×</button></div>
+      <p class="muted">這些設定只存在這台裝置的瀏覽器裡，不會上傳到 GitHub。換一台裝置要再填一次。</p>
+      <label class="field">Gemini 鑰匙<input name="gemini_api_key" type="password" autocomplete="off" placeholder="從 Google AI Studio 複製過來" /></label>
+      <label class="field">Gemini 模型名稱<input name="gemini_model" placeholder="gemini-3.8-flash" /></label>
+      <p class="muted">只用手動模式的話，這裡可以不填。</p>
+      <label class="time-switch"><input type="checkbox" name="auto_copy"> 手動模式送出時，自動複製提示詞</label>
+      <div class="settings-look"><button id="theme-toggle" class="secondary" type="button">☀ 換成淺色</button><button id="hue-open" class="secondary" type="button"><span class="hue-dot"></span>主題色</button></div>
+      <label class="field">風格提示詞<textarea name="style_prompt" rows="6" maxlength="1000" placeholder="例如：說話口語、簡短，不用比喻。清空就不送風格。"></textarea></label>
+      <p class="muted">每次聊天都會送給 AI，告訴他說話、描述要用什麼風格。所有角色共用，最多 1000 字，清空就不送。<button id="style-reset" type="button" class="secondary small-button">恢復預設</button></p>
+      <details class="style-exceptions"><summary>詳細設定：個別角色用自己的風格</summary>
+        <p class="muted">打勾的角色用自己的風格，沒打勾的用上面共用的。</p>
+        <div id="style-exception-list"></div></details>
+      <p class="muted">角色存在這台裝置的瀏覽器裡，不會上傳。要換裝置玩或備份，用聊天右上角「⋯」裡的「匯出備份」，到另一台按左上角「＋」裡的「匯入角色」。</p>
+      <div class="dialog-actions"><button value="cancel" class="secondary">取消</button><button value="default" class="primary">儲存</button></div></form></dialog>
+    <script src="core.js?v=0.1.38"></script>
+    <script src="store.js?v=0.1.38"></script>
+    <script src="ai.js?v=0.1.38"></script>
+    <script src="app.js?v=0.1.38"></script>
+  </body>
+</html>

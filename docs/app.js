@@ -42,6 +42,7 @@ function sectionHead(text) { const head = document.createElement("p"); head.clas
 function renderList() {
   const container = $("#character-list"); container.innerHTML = "";
   const arranged = Core.arrangeCharacters(characters, listLayout()), sort = arranged.sort;
+  if (!characters.length) container.append(el("p", "list-empty", "還沒有角色。按上面的「＋」新增或匯入。"));
   $("#list-sort").value = sort;
   if (arranged.pinned.length) { container.append(sectionHead("📌 釘選")); arranged.pinned.forEach((item) => container.append(characterRow(item, sort, false))); }
   arranged.folders.forEach((folder) => {
@@ -107,7 +108,7 @@ function loadCharacter(id) {
   buildDraft();
   selectedRelationshipId = current.relationships.find((item) => item?.relationship_id)?.relationship_id || null;
   resetPendingChat(); viewingChatId = null; refreshChatTurns();
-  $("#empty-state").hidden = true; $("#editor").hidden = false; render();
+  $("#empty-state").hidden = true; $("#editor").hidden = false; setView("chat"); render();
 }
 function render() {
   if (!current) return;
@@ -258,7 +259,7 @@ function createCharacter() {
 function deleteCharacter() {
   if (!current || !confirm(`確定要刪除「${current.profile.name}」嗎？角色和所有對話都會刪掉，無法復原。\n\n如果還想留著，可以先按「匯出備份」。`)) return;
   Store.deleteCharacter(current.character_id); current = null; setDirty(false); refreshList();
-  $("#editor").hidden = true; $("#empty-state").hidden = false; toast("角色已刪除");
+  closeSidePanel(); $("#editor").hidden = true; $("#empty-state").hidden = false; setView("list"); toast("角色已刪除");
 }
 // 匯出的檔案 = 角色資料＋對話紀錄，帶到別台裝置匯入就能接著玩。
 function exportCurrent() {
@@ -355,7 +356,7 @@ function applyCleanup() {
 }
 
 // ---------- 設定（Gemini 鑰匙只存在這台裝置） ----------
-function openSettings() { const s = Store.getSettings(), form = $("#settings-form"); form.gemini_api_key.value = s.gemini_api_key || ""; form.gemini_model.value = s.gemini_model || ""; form.phone_zoom.value = s.phone_zoom === "page" ? "page" : "fullscreen"; form.auto_copy.checked = s.auto_copy !== false; form.style_prompt.value = stylePrompt(); renderStyleExceptions(); $("#settings-dialog").showModal(); }
+function openSettings() { const s = Store.getSettings(), form = $("#settings-form"); form.gemini_api_key.value = s.gemini_api_key || ""; form.gemini_model.value = s.gemini_model || ""; form.auto_copy.checked = s.auto_copy !== false; form.style_prompt.value = stylePrompt(); renderStyleExceptions(); $("#settings-dialog").showModal(); }
 // 詳細設定：每個角色一列，打勾就用自己的風格（第一次打勾先抄一份共用的來改）。
 function renderStyleExceptions() {
   const list = $("#style-exception-list"); list.replaceChildren();
@@ -391,7 +392,7 @@ function saveSettings(event) {
   const form = $("#settings-form");
   const style = form.style_prompt.value.trim();
   if (style.length > Core.MAX_STYLE_PROMPT_LENGTH) { event.preventDefault(); toast(`風格提示詞最多 ${Core.MAX_STYLE_PROMPT_LENGTH} 字，現在是 ${style.length} 字。`, true); return; }
-  try { Store.saveSettings({ ...Store.getSettings(), gemini_api_key: form.gemini_api_key.value.trim(), gemini_model: form.gemini_model.value.trim(), phone_zoom: form.phone_zoom.value, auto_copy: form.auto_copy.checked, style_prompt: style }); saveStyleExceptions(); if (current) render(); else renderChat(); toast("設定已存在這台裝置"); }
+  try { Store.saveSettings({ ...Store.getSettings(), gemini_api_key: form.gemini_api_key.value.trim(), gemini_model: form.gemini_model.value.trim(), auto_copy: form.auto_copy.checked, style_prompt: style }); saveStyleExceptions(); if (current) render(); else renderChat(); toast("設定已存在這台裝置"); }
   catch (error) { toast(error.message, true); }
 }
 
@@ -470,7 +471,6 @@ function savedTurnPeek(turn, latest) {
 function renderChat() {
   if (!current) return;
   const name = current.profile.name || "他";
-  $("#chat-title").textContent = `跟 ${name} 聊天`;
   const history = $("#chat-history"); history.innerHTML = "";
   if (!chatTurns.length && (!pendingMessage || viewingOldChat())) history.append(el("p", "chat-empty", `還沒有對話。在下面打字，跟 ${name} 說說話吧。`));
   const allTurns = Store.allTurns(current.character_id);
@@ -540,7 +540,7 @@ function changeChatMode() {
 }
 function renderChatSelect() {
   const select = $("#chat-select"), chats = current.chats || [];
-  select.hidden = chats.length < 2; select.innerHTML = "";
+  $("#chat-select-box").hidden = chats.length < 2; select.innerHTML = "";
   chats.forEach((chat, index) => {
     const option = el("option", "", index === chats.length - 1 ? "目前的聊天" : `舊聊天 ${index + 1}（${shortTime(chat.started_at)} 開始）`);
     option.value = chat.chat_id; select.append(option);
@@ -640,7 +640,7 @@ async function generateChat(event) {
   try {
     const userMessage = Core.validateUserMessage($("#chat-message").value); const manual = $("#chat-mode").value === "manual";
     const settings = geminiSettings();
-    if (!manual && !settings.apiKey) throw new Error("還沒填 Gemini 鑰匙。請按左邊的「設定」填好，或改用手動複製貼上。");
+    if (!manual && !settings.apiKey) throw new Error("還沒填 Gemini 鑰匙。請按角色列表下面的「⚙ 設定」填好，或改用手動複製貼上。");
     const prompt = chatPrompt(userMessage, manual);
     pendingMessage = userMessage; $("#chat-message").value = ""; growComposer();
     if (manual) { $("#paste-help").hidden = true; $("#manual-chat-prompt").value = prompt; $("#manual-chat-response").value = ""; autoCopyPrompt(prompt); renderChat(); return; }
@@ -808,10 +808,10 @@ function resolveProposalUI(item, accept, text) {
   if (persist((doc) => Core.resolveProposal(doc, item.proposal_id, { accept, text }), accept ? `${item.label}改好了` : "這筆提議拿掉了")) { buildDraft(); renderCharacterForm(); }
 }
 
-// ---------- 聊天室放大（網頁裡鋪滿畫面） ----------
-// 放大時那一欄的寬度（記在這台裝置）。按－／＋每次 80，最窄 480、最寬 1600。
+// ---------- 聊天寬度（電腦上聊天那一欄最寬多少，記在這台裝置） ----------
+// 按－／＋每次 80，最窄 480、最寬 1600。
 const CHAT_WIDTH = { min: 480, max: 1600, step: 80, start: 820 };
-function savedChatWidth() { const saved = Store.getSettings().chat_width; return Number.isFinite(saved) ? saved : CHAT_WIDTH.start; }
+function savedChatWidth() { try { const saved = Store.getSettings().chat_width; return Number.isFinite(saved) ? saved : CHAT_WIDTH.start; } catch { return CHAT_WIDTH.start; } }
 function applyChatWidth(width) {
   document.documentElement.style.setProperty("--chat-width", `${width}px`);
   $("#chat-narrower").disabled = width <= CHAT_WIDTH.min; $("#chat-wider").disabled = width >= CHAT_WIDTH.max;
@@ -821,63 +821,72 @@ function changeChatWidth(direction) {
   applyChatWidth(width);
   try { Store.saveSettings({ ...Store.getSettings(), chat_width: width }); } catch { /* 存不了也照樣能調 */ }
 }
-// 手機、平板按放大：預設順便進真的全螢幕（設定可以改成只在網頁裡放大）。iPhone 不支援就只在網頁裡放大。
-function wantsFullscreen() {
-  if (!touchOnly || typeof document.documentElement.requestFullscreen !== "function") return false;
-  try { return Store.getSettings().phone_zoom !== "page"; } catch { return true; }
+// ---------- 手機：列表頁和聊天頁（像通訊軟體）；全螢幕（藏網址列） ----------
+// 電腦上兩邊都看得到，view 只影響手機的畫面。
+function setView(view) { document.body.dataset.view = view; if (view === "chat") scrollChatToBottom(); }
+function scrollChatToBottom() { const history = $("#chat-history"); requestAnimationFrame(() => { history.scrollTop = history.scrollHeight; }); }
+const canFullscreen = touchOnly && typeof document.documentElement.requestFullscreen === "function"; // iPhone 不支援
+function toggleFullscreen() {
+  if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
+  else document.documentElement.requestFullscreen().catch(() => toast("這個瀏覽器不讓網頁進全螢幕。", true));
+  $("#chat-menu").close();
 }
-let zoomFullscreen = false;
-document.addEventListener("fullscreenchange", () => {
-  // 用返回手勢退出全螢幕時，聊天室也一起縮回來。
-  if (!document.fullscreenElement && zoomFullscreen) { zoomFullscreen = false; if (document.body.classList.contains("chat-zoomed")) setChatZoom(false); }
-});
-// 手機鍵盤彈出來時，畫面實際看得到的高度會變小；放大的聊天室跟著縮，輸入框才不會被鍵盤蓋住。
+function renderFullscreenButton() { const button = $("#chat-fullscreen"); button.hidden = !canFullscreen; button.firstChild.textContent = document.fullscreenElement ? "離開全螢幕" : "全螢幕"; }
+document.addEventListener("fullscreenchange", renderFullscreenButton);
+// 手機鍵盤彈出來時，畫面實際看得到的高度會變小；聊天頁跟著縮，輸入框才不會被鍵盤蓋住。
 function syncVisibleArea() {
   const view = window.visualViewport; if (!view) return;
   const root = document.documentElement.style;
   root.setProperty("--app-height", `${Math.round(view.height)}px`); root.setProperty("--app-top", `${Math.round(view.offsetTop)}px`);
-  if (document.body.classList.contains("chat-zoomed") && document.activeElement === $("#chat-message")) { const history = $("#chat-history"); history.scrollTop = history.scrollHeight; }
+  if (document.activeElement === $("#chat-message")) { const history = $("#chat-history"); history.scrollTop = history.scrollHeight; }
 }
 if (window.visualViewport) { window.visualViewport.addEventListener("resize", syncVisibleArea); window.visualViewport.addEventListener("scroll", syncVisibleArea); syncVisibleArea(); }
-function setChatZoom(on) {
-  if (on && !document.body.classList.contains("chat-zoomed") && wantsFullscreen() && !document.fullscreenElement) {
-    document.documentElement.requestFullscreen().then(() => { zoomFullscreen = true; }).catch(() => { /* 進不了全螢幕就只在網頁裡放大 */ });
-  }
-  if (!on && zoomFullscreen && document.fullscreenElement) { zoomFullscreen = false; document.exitFullscreen().catch(() => {}); }
-  document.body.classList.toggle("chat-zoomed", on);
-  $("#chat-width-box").hidden = !on;
-  if (on) applyChatWidth(savedChatWidth());
-  const button = $("#chat-zoom"); button.textContent = on ? "縮小" : "放大"; button.title = on ? "回到原本的大小（也可以按 Esc）" : "聊天室鋪滿整個畫面";
-  const history = $("#chat-history"); history.scrollTop = history.scrollHeight;
-}
+function openChatMenu() { renderFullscreenButton(); applyChatWidth(savedChatWidth()); $("#chat-menu").showModal(); }
 
 // ---------- 分頁與啟動 ----------
-function showTab(name) { if (name !== "chat") setChatZoom(false); document.querySelectorAll(".tab").forEach((x) => x.classList.toggle("active", x.dataset.tab === name)); document.querySelectorAll(".tab-panel").forEach((x) => { x.hidden = x.id !== `panel-${name}`; }); if (name === "chat") { const history = $("#chat-history"); history.scrollTop = history.scrollHeight; } }
+// 「角色」「觀察者」：電腦上從右邊開一塊，手機上整頁蓋上去。再按一次同一個就關掉。
+const PANEL_TITLES = { character: "角色", observer: "觀察者" };
+function showTab(name, { toggle = false } = {}) {
+  const open = !$("#side-panel").hidden && document.querySelector(".tab.active")?.dataset.tab === name;
+  if (name === "chat" || (toggle && open)) { closeSidePanel(); return; }
+  document.querySelectorAll(".tab").forEach((x) => x.classList.toggle("active", x.dataset.tab === name));
+  document.querySelectorAll(".tab-panel").forEach((x) => { x.hidden = x.id !== `panel-${name}`; });
+  $("#side-panel-title").textContent = PANEL_TITLES[name] || ""; $("#side-panel").hidden = false; $("#side-panel").scrollTop = 0;
+  document.body.classList.add("panel-open");
+}
+function closeSidePanel() {
+  $("#side-panel").hidden = true; document.body.classList.remove("panel-open");
+  document.querySelectorAll(".tab").forEach((x) => x.classList.remove("active"));
+  scrollChatToBottom();
+}
 function start() {
   try { applyTheme(); } catch { /* 存不了設定也照樣能玩 */ }
-  setupHueRing(); $("#chat-narrower").onclick = () => changeChatWidth(-1); $("#chat-wider").onclick = () => changeChatWidth(1);
-  $("#card-open").onclick = openCardDialog; $("#card-copy").onclick = () => copyText($("#card-template").value, "空白角卡已經複製好了", "瀏覽器不讓網頁直接複製，請在上面的框裡全選後複製，或按「下載成檔案」。");
+  setupHueRing(); applyChatWidth(savedChatWidth()); setView("list"); $("#chat-narrower").onclick = () => changeChatWidth(-1); $("#chat-wider").onclick = () => changeChatWidth(1);
+  $("#card-open").onclick = () => { $("#add-menu").close(); openCardDialog(); }; $("#card-copy").onclick = () => copyText($("#card-template").value, "空白角卡已經複製好了", "瀏覽器不讓網頁直接複製，請在上面的框裡全選後複製，或按「下載成檔案」。");
   $("#memory-cleanup").onclick = openMemoryCleanup; $("#mc-copy").onclick = () => copyText(Core.buildMemoryCleanupPrompt(current), "整理記憶的提示詞已複製", "瀏覽器不讓網頁直接複製。");
   $("#mc-gemini").onclick = cleanupWithGemini; $("#mc-read").onclick = () => showCleanup($("#mc-paste").value); $("#mc-apply").onclick = applyCleanup;
   $("#card-download").onclick = downloadCard; $("#card-import").onclick = importCardFromDialog;
   setupListControls();
-  try { refreshList(); const first = firstInList(); if (first) { loadCharacter(first.id); showTab("chat"); } }
+  try { refreshList(); const first = firstInList(); if (first) loadCharacter(first.id); }
   catch (error) { toast(error.message, true); }
 }
-$("#new-character").onclick = createCharacter; document.querySelector("[data-new]").onclick = createCharacter;
+$("#new-character").onclick = () => { $("#add-menu").close(); createCharacter(); };
+$("#add-menu-open").onclick = () => $("#add-menu").showModal(); $("#chat-menu-open").onclick = openChatMenu; $("#chat-fullscreen").onclick = toggleFullscreen;
+$("#back-to-list").onclick = () => { closeSidePanel(); setView("list"); }; $("#side-panel-close").onclick = closeSidePanel; document.querySelector("[data-new]").onclick = createCharacter;
 $("#save-character").onclick = () => $("#character-form").requestSubmit(); $("#character-form").onsubmit = saveCharacter; $("#character-form").oninput = () => setDirty(true);
 $("#add-custom-module").onclick = addCustomModule;
 $("#memory-settings-form").onsubmit = saveMemorySettings; $("#save-state").onclick = () => $("#state-form").requestSubmit(); $("#state-form").onsubmit = saveState;
-$("#add-relationship").onclick = addRelationship; $("#import-file").onchange = importFile; $("#export-button").onclick = exportCurrent; $("#delete-character").onclick = deleteCharacter;
+$("#add-relationship").onclick = addRelationship; $("#import-file").onchange = (event) => { $("#add-menu").close(); importFile(event); }; $("#export-button").onclick = () => { $("#chat-menu").close(); exportCurrent(); }; $("#delete-character").onclick = deleteCharacter;
 $("#copy-json").onclick = () => copyText(JSON.stringify(current, null, 2), "完整 JSON 已複製");
 $("#style-reset").onclick = () => { $("#settings-form").style_prompt.value = Core.DEFAULT_STYLE_PROMPT; toast("風格提示詞換回預設了，按「儲存」才算數"); };
 $("#open-settings").onclick = openSettings; $("#settings-form").onsubmit = saveSettings;
 $("#chat-form").onsubmit = generateChat; $("#chat-mode").onchange = changeChatMode; $("#copy-chat-prompt").onclick = copyChatPrompt; $("#show-chat-prompt").onclick = toggleChatPrompt; $("#parse-chat-response").onclick = parseManualChatResponse; $("#paste-chat-response").onclick = pasteChatResponse; $("#cancel-manual-chat").onclick = discardPendingChat;
-$("#real-time-toggle").onchange = toggleRealTime; $("#proposal-toggle").onchange = toggleProposals; $("#video-toggle").onchange = toggleVideo; $("#theme-toggle").onclick = toggleTheme; $("#chat-zoom").onclick = () => setChatZoom(!document.body.classList.contains("chat-zoomed"));
-document.addEventListener("keydown", (event) => { if (event.key === "Escape" && document.body.classList.contains("chat-zoomed") && !document.querySelector("dialog[open]")) setChatZoom(false); }); $("#new-chat").onclick = openNewChat; $("#chat-select").onchange = switchChat;
+$("#real-time-toggle").onchange = toggleRealTime; $("#proposal-toggle").onchange = toggleProposals; $("#video-toggle").onchange = toggleVideo; $("#theme-toggle").onclick = toggleTheme;
+document.addEventListener("keydown", (event) => { if (event.key === "Escape" && !$("#side-panel").hidden && !document.querySelector("dialog[open]")) closeSidePanel(); });
+$("#new-chat").onclick = () => { $("#chat-menu").close(); openNewChat(); }; $("#chat-select").onchange = () => { $("#chat-menu").close(); switchChat(); };
 $("#back-to-current-chat").onclick = () => { $("#chat-select").value = Core.currentChatId(current); switchChat(); };
 $("#chat-message").onkeydown = composerKeydown; $("#chat-message").oninput = growComposer;
-document.querySelectorAll(".tab").forEach((button) => { button.onclick = () => showTab(button.dataset.tab); });
+document.querySelectorAll(".tab").forEach((button) => { button.onclick = () => showTab(button.dataset.tab, { toggle: true }); });
 // 展開折起來的區塊時，如果展開的內容跑到畫面外面（例如在頁尾），就捲過去讓它看得到。
 document.addEventListener("toggle", (event) => {
   const box = event.target;
