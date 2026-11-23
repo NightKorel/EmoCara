@@ -513,7 +513,9 @@
 不要編造沒有的事；只出現一次、有意義的事要保留，不要因為想精簡就刪掉。
 合併時 importance 取那幾條裡最高的（core 最高，其次 important，再來 ordinary）。
 每一層的筆數不能超過 memory_settings 的 max_items，每筆 summary 加 reason 的字數不能超過那一層的 max_chars。
-summary 用角色的角度寫記住了什麼，reason 寫為什麼值得記住。
+summary 用角色的角度寫記住了什麼，reason 寫為什麼值得記住，各一句話，不加形容詞、不寫感想。例如：
+「使用者在找工作」「使用者面試了兩間」「使用者拿到第二間的錄取」→ 合成一條：{"summary": "使用者找工作，拿到第二間的錄取", "importance": "important", "reason": "使用者的處境變了"}
+「使用者怕打雷」「使用者說打雷很可怕」→ 合成一條：{"summary": "使用者怕打雷", "importance": "ordinary", "reason": "下雨天可以多注意"}
 只回傳 JSON 物件，不要 Markdown 或額外文字。格式：
 {"memories": [{"summary": "記住的事", "importance": "ordinary、important 或 core", "reason": "為什麼值得記住"}]}
 
@@ -763,6 +765,12 @@ feeling_toward_user 寫一兩句、100 字以內，用旁觀者的角度寫，�
 state_proposal 只在這次對話確實讓心理數值有變化時提出；否則填 null。
 memory_candidates 最多三筆，只記本次對話明確出現、有長期意義的事；沒有就回傳 []。
 角色資料的 memories 是已經記住的事：意思一樣或很像的不要再提，同一件事有小進展也不要另立一條。
+summary 一句話寫事實，reason 一句話寫為什麼要記，不加形容詞、不寫感想、不重述經過。照這個長度寫：
+好：{"summary": "使用者怕打雷", "importance": "ordinary", "reason": "下雨天可以多注意"}
+好：{"summary": "使用者第一次叫我的名字", "importance": "important", "reason": "關係變近了"}
+不好：{"summary": "在今天這段溫暖又有點尷尬的對話裡，使用者向我坦白自己從小就非常害怕打雷，讓我心裡泛起一陣說不出的感覺", "reason": "這段珍貴的坦白讓我們的距離拉近了許多，值得好好珍惜"}（太長、堆形容詞、寫感想）
+不好：已經記了「使用者怕打雷」，又提「使用者說打雷很可怕」（意思一樣）。
+不用記：打招呼、閒聊、這一句的心情（那些放 feeling_toward_user）。
 角色資料的 memory_settings 是各層級的筆數與每筆字數上限，要遵守；放不下的不會存。
 ${proposalsOn ? `profile_proposals：這次對話明確發生了會改變設定的事（外表變了、換工作、處境變了、想法真的變了）才提，
 最多 ${MAX_PROFILE_PROPOSALS} 筆、每欄一筆，沒有就回傳 []，不能改名字。new_text 寫那一欄改完後的完整內容，原本還成立的要保留。
